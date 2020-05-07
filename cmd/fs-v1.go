@@ -16,6 +16,11 @@
 
 package cmd
 
+// #cgo CFLAGS: -g -Wall -I/usr/local/include -I/home/user1/gfarm/lib/libgfarm
+// #cgo LDFLAGS: -L/usr/local/lib -lgfarm -Wl,-rpath,/usr/local/lib
+// #include "greeter.h"
+import "C"
+
 import (
 	"bytes"
 	"context"
@@ -539,6 +544,10 @@ func (fs *FSObjects) CopyObject(ctx context.Context, srcBucket, srcObject, dstBu
 // GetObjectNInfo - returns object info and a reader for object
 // content.
 func (fs *FSObjects) GetObjectNInfo(ctx context.Context, bucket, object string, rs *HTTPRangeSpec, h http.Header, lockType LockType, opts ObjectOptions) (gr *GetObjectReader, err error) {
+
+abc := bucket == "mybucket" && object == "a/b/c"
+fmt.Fprintf(os.Stderr, "@@@: getObjectNInfo: bucket: %q  object: %q  abc: %v\n", bucket, object, abc)
+
 	if err = checkGetObjArgs(ctx, bucket, object); err != nil {
 		return nil, err
 	}
@@ -607,12 +616,23 @@ func (fs *FSObjects) GetObjectNInfo(ctx context.Context, bucket, object string, 
 
 	// Read the object, doesn't exist returns an s3 compatible error.
 	fsObjPath := pathJoin(fs.fsPath, bucket, object)
-	readCloser, size, err := fsOpenFile(ctx, fsObjPath, off)
+//	readCloser, size, err := fsOpenFile(ctx, fsObjPath, off)
+fmt.Fprintf(os.Stderr, "@@@: GetObjectNInfo: fsOpenFile(%q, %d),  abc: %v\n", fsObjPath, off, abc)
+	var readCloser io.ReadCloser
+	var size int64
+{
+	var err error
+	if abc {
+		readCloser, size, err = tst_read_from_gfarm()
+	} else {
+		readCloser, size, err = fsOpenFile(ctx, fsObjPath, off)
+	}
 	if err != nil {
 		rwPoolUnlocker()
 		nsUnlocker()
 		return nil, toObjectErr(err, bucket, object)
 	}
+}
 	reader := io.LimitReader(readCloser, length)
 	closeFn := func() {
 		readCloser.Close()
@@ -638,6 +658,9 @@ func (fs *FSObjects) GetObjectNInfo(ctx context.Context, bucket, object string, 
 // startOffset indicates the starting read location of the object.
 // length indicates the total length of the object.
 func (fs *FSObjects) GetObject(ctx context.Context, bucket, object string, offset int64, length int64, writer io.Writer, etag string, opts ObjectOptions) (err error) {
+
+fmt.Fprintf(os.Stderr, "@@@: GetObject ctx:%p bucket:%q object:%q offset:%d length:%d writer:%p etag:%q opts:%v\n", ctx, bucket, object, offset, length, writer, etag, opts)
+
 	if err = checkGetObjArgs(ctx, bucket, object); err != nil {
 		return err
 	}
@@ -660,6 +683,9 @@ func (fs *FSObjects) GetObject(ctx context.Context, bucket, object string, offse
 
 // getObject - wrapper for GetObject
 func (fs *FSObjects) getObject(ctx context.Context, bucket, object string, offset int64, length int64, writer io.Writer, etag string, lock bool) (err error) {
+
+fmt.Fprintf(os.Stderr, "@@@: getObject ctx:%p bucket:%q object:%q offset:%d length:%d writer:%p etag:%q lock:%v\n", ctx, bucket, object, offset, length, writer, etag, lock)
+
 	if _, err = fs.statBucketDir(ctx, bucket); err != nil {
 		return toObjectErr(err, bucket)
 	}
@@ -708,6 +734,7 @@ func (fs *FSObjects) getObject(ctx context.Context, bucket, object string, offse
 
 	// Read the object, doesn't exist returns an s3 compatible error.
 	fsObjPath := pathJoin(fs.fsPath, bucket, object)
+fmt.Fprintf(os.Stderr, "@@@: getObject: fsOpenFile(%q, %d)\n", fsObjPath, offset)
 	reader, size, err := fsOpenFile(ctx, fsObjPath, offset)
 	if err != nil {
 		return toObjectErr(err, bucket, object)
@@ -770,6 +797,9 @@ func (fs *FSObjects) defaultFsJSON(object string) fsMetaV1 {
 
 // getObjectInfo - wrapper for reading object metadata and constructs ObjectInfo.
 func (fs *FSObjects) getObjectInfo(ctx context.Context, bucket, object string) (oi ObjectInfo, e error) {
+
+fmt.Fprintf(os.Stderr, "@@@: getObjectInfo\n")
+
 	fsMeta := fsMetaV1{}
 	if HasSuffix(object, SlashSeparator) {
 		fi, err := fsStatDir(ctx, pathJoin(fs.fsPath, bucket, object))
@@ -816,6 +846,9 @@ func (fs *FSObjects) getObjectInfo(ctx context.Context, bucket, object string) (
 
 // getObjectInfoWithLock - reads object metadata and replies back ObjectInfo.
 func (fs *FSObjects) getObjectInfoWithLock(ctx context.Context, bucket, object string) (oi ObjectInfo, e error) {
+
+fmt.Fprintf(os.Stderr, "@@@: getObjectInfoWithLock\n")
+
 	// Lock the object before reading.
 	objectLock := fs.NewNSLock(ctx, bucket, object)
 	if err := objectLock.GetRLock(globalObjectTimeout); err != nil {
@@ -840,6 +873,8 @@ func (fs *FSObjects) getObjectInfoWithLock(ctx context.Context, bucket, object s
 
 // GetObjectInfo - reads object metadata and replies back ObjectInfo.
 func (fs *FSObjects) GetObjectInfo(ctx context.Context, bucket, object string, opts ObjectOptions) (oi ObjectInfo, e error) {
+
+fmt.Fprintf(os.Stderr, "@@@: GetObjectInfo\n")
 
 	atomic.AddInt64(&fs.activeIOCount, 1)
 	defer func() {
@@ -890,6 +925,9 @@ func (fs *FSObjects) parentDirIsObject(ctx context.Context, bucket, parent strin
 // Additionally writes `fs.json` which carries the necessary metadata
 // for future object operations.
 func (fs *FSObjects) PutObject(ctx context.Context, bucket string, object string, r *PutObjReader, opts ObjectOptions) (objInfo ObjectInfo, retErr error) {
+
+fmt.Fprintf(os.Stderr, "@@@: PutObject ctx:%p bucket:%q object:%q reader:%p opts:%v\n", ctx, bucket, object, r, opts)
+
 	if err := checkPutObjectArgs(ctx, bucket, object, fs, r.Size()); err != nil {
 		return ObjectInfo{}, err
 	}
@@ -913,6 +951,10 @@ func (fs *FSObjects) PutObject(ctx context.Context, bucket string, object string
 
 // putObject - wrapper for PutObject
 func (fs *FSObjects) putObject(ctx context.Context, bucket string, object string, r *PutObjReader, opts ObjectOptions) (objInfo ObjectInfo, retErr error) {
+
+cba := bucket == "mybucket" && object == "a/b/c"
+fmt.Fprintf(os.Stderr, "@@@: putObject: fs.fsPath: %q  bucket: %q  object: %q  cba: %v\n", fs.fsPath, bucket, object, cba)
+
 	data := r.Reader
 
 	// No metadata is set, allocate a new one.
@@ -993,7 +1035,20 @@ func (fs *FSObjects) putObject(ctx context.Context, bucket string, object string
 	}
 
 	buf := make([]byte, int(bufSize))
+if cba {
+	fsNSObjPath := pathJoin(fs.fsPath, bucket, object)
+fmt.Fprintf(os.Stderr, "@@@: putObject: tst_write_to_gfarm %T %v\n", fsNSObjPath, fsNSObjPath)
+	bytesWritten, err := tst_write_to_gfarm(fsNSObjPath, data, buf, data.Size())
+	if err != nil {
+		return ObjectInfo{}, toObjectErr(err, bucket, object)
+	}
+	fsMeta.Meta["etag"] = r.MD5CurrentHexString()
+	if bytesWritten < data.Size() {
+		return ObjectInfo{}, IncompleteBody{}
+	}
+} else {
 	fsTmpObjPath := pathJoin(fs.fsPath, minioMetaTmpBucket, fs.fsUUID, tempObj)
+fmt.Fprintf(os.Stderr, "@@@: putObject: fsTmpObjPath = %q  cba: %v\n", fsTmpObjPath, cba)
 	bytesWritten, err := fsCreateFile(ctx, fsTmpObjPath, data, buf, data.Size())
 	if err != nil {
 		fsRemoveFile(ctx, fsTmpObjPath)
@@ -1015,9 +1070,11 @@ func (fs *FSObjects) putObject(ctx context.Context, bucket string, object string
 
 	// Entire object was written to the temp location, now it's safe to rename it to the actual location.
 	fsNSObjPath := pathJoin(fs.fsPath, bucket, object)
+fmt.Fprintf(os.Stderr, "@@@: putObject: fsRenameFile(%q, %q)\n", fsTmpObjPath, fsNSObjPath)
 	if err = fsRenameFile(ctx, fsTmpObjPath, fsNSObjPath); err != nil {
 		return ObjectInfo{}, toObjectErr(err, bucket, object)
 	}
+}
 
 	if bucket != minioMetaBucket {
 		// Write FS metadata after a successful namespace operation.
@@ -1137,6 +1194,9 @@ func (fs *FSObjects) isObjectDir(bucket, prefix string) bool {
 // getObjectETag is a helper function, which returns only the md5sum
 // of the file on the disk.
 func (fs *FSObjects) getObjectETag(ctx context.Context, bucket, entry string, lock bool) (string, error) {
+
+fmt.Fprintf(os.Stderr, "@@@: GetObjectETag\n")
+
 	fsMetaPath := pathJoin(fs.fsPath, minioMetaBucket, bucketMetaPrefix, bucket, entry, fs.metaJSONFile)
 
 	var reader io.Reader
@@ -1209,6 +1269,8 @@ func (fs *FSObjects) getObjectETag(ctx context.Context, bucket, entry string, lo
 // state for future re-entrant list requests.
 func (fs *FSObjects) ListObjects(ctx context.Context, bucket, prefix, marker, delimiter string, maxKeys int) (loi ListObjectsInfo, e error) {
 
+fmt.Fprintf(os.Stderr, "@@@: ListObjects\n")
+
 	atomic.AddInt64(&fs.activeIOCount, 1)
 	defer func() {
 		atomic.AddInt64(&fs.activeIOCount, -1)
@@ -1220,6 +1282,9 @@ func (fs *FSObjects) ListObjects(ctx context.Context, bucket, prefix, marker, de
 
 // GetObjectTag - get object tags from an existing object
 func (fs *FSObjects) GetObjectTag(ctx context.Context, bucket, object string) (*tags.Tags, error) {
+
+fmt.Fprintf(os.Stderr, "@@@: GetObjectTag\n")
+
 	oi, err := fs.GetObjectInfo(ctx, bucket, object, ObjectOptions{})
 	if err != nil {
 		return nil, err
@@ -1416,4 +1481,43 @@ func (fs *FSObjects) IsReady(_ context.Context) bool {
 	globalObjLayerMutex.RUnlock()
 
 	return res
+}
+
+func tst_write_to_gfarm(filePath string, reader io.Reader, buf []byte, fallocSize int64) (int64, error) {
+fmt.Fprintf(os.Stderr, "@@@: TST_WRITE_TO_GFARM => gfreg_d => gfreg_main\n")
+//@fmt.Fprintf(os.Stderr, "@@@: %v %v %v\n", reader, buf, fallocSize)
+
+	c := make(chan int)
+
+	r0, writer, err := os.Pipe()
+	if err != nil { panic(err) }
+
+	go func() { C.gfreg_d(C.int(r0.Fd())); r0.Close(); c<- 0; } ()
+
+	_, err = io.CopyBuffer(writer, io.LimitReader(reader, fallocSize), buf)
+
+	writer.Close()
+
+	r := <-c
+	if r != 0 { panic("panic") }
+
+	return fallocSize, nil
+}
+
+func tst_read_from_gfarm() (io.ReadCloser, int64, error) {
+fmt.Fprintf(os.Stderr, "@@@: TST_READ_FROM_GFARM == qqq == gfexport_main\n")
+	var size int64
+
+	reader, w1, err := os.Pipe()
+	if err != nil { return nil, 0, err }
+	size = 16
+
+	c := make(chan int)
+
+	go func() { C.qqq(C.int(w1.Fd())); w1.Close(); c<- 0; } ()
+
+//XXX  Close should wait until <-c is available
+	//C.gfarm_terminate()
+
+	return reader, size, err
 }
