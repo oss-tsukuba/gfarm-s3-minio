@@ -22,6 +22,7 @@ import (
 	"os"
 	pathutil "path"
 	"runtime"
+"fmt"
 
 	"github.com/minio/minio/cmd/logger"
 	"github.com/minio/minio/pkg/lock"
@@ -151,6 +152,8 @@ func fsMkdir(ctx context.Context, dirPath string) (err error) {
 // directories. For higher level interpretation look at
 // fsStatFileDir, fsStatFile, fsStatDir.
 func fsStat(ctx context.Context, statLoc string) (os.FileInfo, error) {
+//gfarm_write_test := bucket == "usr" && object == "b/c"
+fmt.Fprintf(os.Stderr, "@@@: fsStatFile: %q\n", statLoc)
 	if statLoc == "" {
 		logger.LogIf(ctx, errInvalidArgument)
 		return nil, errInvalidArgument

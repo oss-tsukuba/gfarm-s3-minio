@@ -34,8 +34,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
-"os"
-"fmt"
+//"os"
+//"fmt"
 
 	"github.com/minio/minio-go/v6/pkg/s3utils"
 	xhttp "github.com/minio/minio/cmd/http"
@@ -312,7 +312,7 @@ func doesPresignedSignatureMatch(hashedPayload string, r *http.Request, region s
 	// Get canonical request.
 	presignedCanonicalReq := getCanonicalRequest(extractedSignedHeaders, hashedPayload, encodedQuery, req.URL.Path, req.Method)
 
-fmt.Fprintf(os.Stderr, "@@@: getCanonicalRequest(\n\t@@@extractedSignedHeaders=%q, \n\t@@@hashedPayload=%q, \n\t@@@encodedQuery=%q, \n\t@@@req.URL.Path=%q, \n\t@@@req.Method=%q) \n\t@@@=> %q\n", extractedSignedHeaders, hashedPayload, encodedQuery, req.URL.Path, req.Method, presignedCanonicalReq)
+//fmt.Fprintf(os.Stderr, "@@@: getCanonicalRequest(\n\t@@@extractedSignedHeaders=%q, \n\t@@@hashedPayload=%q, \n\t@@@encodedQuery=%q, \n\t@@@req.URL.Path=%q, \n\t@@@req.Method=%q) \n\t@@@=> %q\n", extractedSignedHeaders, hashedPayload, encodedQuery, req.URL.Path, req.Method, presignedCanonicalReq)
 
 	// Get string to sign from canonical request.
 	presignedStringToSign := getStringToSign(presignedCanonicalReq, t, pSignValues.Credential.getScope())
@@ -388,7 +388,7 @@ func doesSignatureMatch(hashedPayload string, r *http.Request, region string, st
 	}
 	canonicalRequest := getCanonicalRequest(extractedSignedHeaders, hashedPayload, queryStr, reqURLPath, req.Method)
 
-fmt.Fprintf(os.Stderr, "@@@: getCanonicalRequest(\n\t@@@extractedSignedHeaders=%q, \n\t@@@hashedPayload=%q, \n\t@@@queryStr=%q, \n\t@@@reqURLPath=%q, \n\t@@@req.Method=%q) \n\t@@@=> %q\n", extractedSignedHeaders, hashedPayload, queryStr, reqURLPath, req.Method, canonicalRequest)
+//fmt.Fprintf(os.Stderr, "@@@: getCanonicalRequest(\n\t@@@extractedSignedHeaders=%q, \n\t@@@hashedPayload=%q, \n\t@@@queryStr=%q, \n\t@@@reqURLPath=%q, \n\t@@@req.Method=%q) \n\t@@@=> %q\n", extractedSignedHeaders, hashedPayload, queryStr, reqURLPath, req.Method, canonicalRequest)
 
 	// Get string to sign from canonical request.
 	stringToSign := getStringToSign(canonicalRequest, t, signV4Values.Credential.getScope())

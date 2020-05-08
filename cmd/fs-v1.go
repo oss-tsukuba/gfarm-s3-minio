@@ -18,7 +18,14 @@ package cmd
 
 // #cgo CFLAGS: -g -Wall -I/usr/local/include -I/home/user1/gfarm/lib/libgfarm
 // #cgo LDFLAGS: -L/usr/local/lib -lgfarm -Wl,-rpath,/usr/local/lib
-// #include "greeter.h"
+// #include <stdlib.h>
+// #include <gfarm/gfarm.h>
+// #include "gfarm/host.h"
+// #include "gfarm/config.h"
+// #include "gfarm/gfarm_path.h"
+// #include "gfarm/gfs_pio.h"
+// #include "gfarm/context.h"
+// #include "gfarm/gfs_rdma.h"
 import "C"
 
 import (
@@ -37,6 +44,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/minio/minio-go/v6/pkg/s3utils"
@@ -545,8 +553,8 @@ func (fs *FSObjects) CopyObject(ctx context.Context, srcBucket, srcObject, dstBu
 // content.
 func (fs *FSObjects) GetObjectNInfo(ctx context.Context, bucket, object string, rs *HTTPRangeSpec, h http.Header, lockType LockType, opts ObjectOptions) (gr *GetObjectReader, err error) {
 
-abc := bucket == "mybucket" && object == "a/b/c"
-fmt.Fprintf(os.Stderr, "@@@: getObjectNInfo: bucket: %q  object: %q  abc: %v\n", bucket, object, abc)
+gfarm_read_test := bucket == "usr" && object == "b/c"
+fmt.Fprintf(os.Stderr, "@@@: getObjectNInfo: bucket: %q  object: %q  gfarm_read_test: %v\n", bucket, object, gfarm_read_test)
 
 	if err = checkGetObjArgs(ctx, bucket, object); err != nil {
 		return nil, err
@@ -617,13 +625,13 @@ fmt.Fprintf(os.Stderr, "@@@: getObjectNInfo: bucket: %q  object: %q  abc: %v\n",
 	// Read the object, doesn't exist returns an s3 compatible error.
 	fsObjPath := pathJoin(fs.fsPath, bucket, object)
 //	readCloser, size, err := fsOpenFile(ctx, fsObjPath, off)
-fmt.Fprintf(os.Stderr, "@@@: GetObjectNInfo: fsOpenFile(%q, %d),  abc: %v\n", fsObjPath, off, abc)
+fmt.Fprintf(os.Stderr, "@@@: GetObjectNInfo: fsOpenFile(%q, %d),  gfarm_read_test: %v\n", fsObjPath, off, gfarm_read_test)
 	var readCloser io.ReadCloser
 	var size int64
 {
 	var err error
-	if abc {
-		readCloser, size, err = tst_read_from_gfarm()
+	if gfarm_read_test {
+		readCloser, size, err = tst_read_from_gfarm(fsObjPath)
 	} else {
 		readCloser, size, err = fsOpenFile(ctx, fsObjPath, off)
 	}
@@ -952,8 +960,8 @@ fmt.Fprintf(os.Stderr, "@@@: PutObject ctx:%p bucket:%q object:%q reader:%p opts
 // putObject - wrapper for PutObject
 func (fs *FSObjects) putObject(ctx context.Context, bucket string, object string, r *PutObjReader, opts ObjectOptions) (objInfo ObjectInfo, retErr error) {
 
-cba := bucket == "mybucket" && object == "a/b/c"
-fmt.Fprintf(os.Stderr, "@@@: putObject: fs.fsPath: %q  bucket: %q  object: %q  cba: %v\n", fs.fsPath, bucket, object, cba)
+gfarm_write_test := bucket == "usr" && object == "b/c"
+fmt.Fprintf(os.Stderr, "@@@: putObject: fs.fsPath: %q  bucket: %q  object: %q  gfarm_write_test: %v\n", fs.fsPath, bucket, object, gfarm_write_test)
 
 	data := r.Reader
 
@@ -1035,7 +1043,7 @@ fmt.Fprintf(os.Stderr, "@@@: putObject: fs.fsPath: %q  bucket: %q  object: %q  c
 	}
 
 	buf := make([]byte, int(bufSize))
-if cba {
+if gfarm_write_test {
 	fsNSObjPath := pathJoin(fs.fsPath, bucket, object)
 fmt.Fprintf(os.Stderr, "@@@: putObject: tst_write_to_gfarm %T %v\n", fsNSObjPath, fsNSObjPath)
 	bytesWritten, err := tst_write_to_gfarm(fsNSObjPath, data, buf, data.Size())
@@ -1048,7 +1056,7 @@ fmt.Fprintf(os.Stderr, "@@@: putObject: tst_write_to_gfarm %T %v\n", fsNSObjPath
 	}
 } else {
 	fsTmpObjPath := pathJoin(fs.fsPath, minioMetaTmpBucket, fs.fsUUID, tempObj)
-fmt.Fprintf(os.Stderr, "@@@: putObject: fsTmpObjPath = %q  cba: %v\n", fsTmpObjPath, cba)
+fmt.Fprintf(os.Stderr, "@@@: putObject: fsTmpObjPath = %q  gfarm_write_test: %v\n", fsTmpObjPath, gfarm_write_test)
 	bytesWritten, err := fsCreateFile(ctx, fsTmpObjPath, data, buf, data.Size())
 	if err != nil {
 		fsRemoveFile(ctx, fsTmpObjPath)
@@ -1075,6 +1083,7 @@ fmt.Fprintf(os.Stderr, "@@@: putObject: fsRenameFile(%q, %q)\n", fsTmpObjPath, f
 		return ObjectInfo{}, toObjectErr(err, bucket, object)
 	}
 }
+fmt.Fprintf(os.Stderr, "@@@: putObject: writing done\n")
 
 	if bucket != minioMetaBucket {
 		// Write FS metadata after a successful namespace operation.
@@ -1086,9 +1095,11 @@ fmt.Fprintf(os.Stderr, "@@@: putObject: fsRenameFile(%q, %q)\n", fsTmpObjPath, f
 	// Stat the file to fetch timestamp, size.
 	fi, err := fsStatFile(ctx, pathJoin(fs.fsPath, bucket, object))
 	if err != nil {
+fmt.Fprintf(os.Stderr, "@@@: putObject: stat failed\n")
 		return ObjectInfo{}, toObjectErr(err, bucket, object)
 	}
 
+fmt.Fprintf(os.Stderr, "@@@: putObject: success\n")
 	// Success.
 	return fsMeta.ToObjectInfo(bucket, object, fi), nil
 }
@@ -1486,13 +1497,18 @@ func (fs *FSObjects) IsReady(_ context.Context) bool {
 func tst_write_to_gfarm(filePath string, reader io.Reader, buf []byte, fallocSize int64) (int64, error) {
 fmt.Fprintf(os.Stderr, "@@@: TST_WRITE_TO_GFARM => gfreg_d => gfreg_main\n")
 //@fmt.Fprintf(os.Stderr, "@@@: %v %v %v\n", reader, buf, fallocSize)
+	gfarm_initialize()
 
 	c := make(chan int)
 
 	r0, writer, err := os.Pipe()
 	if err != nil { panic(err) }
 
-	go func() { C.gfreg_d(C.int(r0.Fd())); r0.Close(); c<- 0; } ()
+	go func() {
+		gfreg(filePath, r0.Fd())
+		r0.Close()
+		c<- 0
+	} ()
 
 	_, err = io.CopyBuffer(writer, io.LimitReader(reader, fallocSize), buf)
 
@@ -1504,9 +1520,11 @@ fmt.Fprintf(os.Stderr, "@@@: TST_WRITE_TO_GFARM => gfreg_d => gfreg_main\n")
 	return fallocSize, nil
 }
 
-func tst_read_from_gfarm() (io.ReadCloser, int64, error) {
-fmt.Fprintf(os.Stderr, "@@@: TST_READ_FROM_GFARM == qqq == gfexport_main\n")
+func tst_read_from_gfarm(fsObjPath string) (io.ReadCloser, int64, error) {
+fmt.Fprintf(os.Stderr, "@@@: TST_READ_FROM_GFARM == gfexport_main\n")
 	var size int64
+
+	gfarm_initialize()
 
 	reader, w1, err := os.Pipe()
 	if err != nil { return nil, 0, err }
@@ -1514,10 +1532,55 @@ fmt.Fprintf(os.Stderr, "@@@: TST_READ_FROM_GFARM == qqq == gfexport_main\n")
 
 	c := make(chan int)
 
-	go func() { C.qqq(C.int(w1.Fd())); w1.Close(); c<- 0; } ()
+	go func() {
+		gfexport(fsObjPath, w1.Fd())
+		w1.Close()
+		c<- 0
+	} ()
 
 //XXX  Close should wait until <-c is available
 	//C.gfarm_terminate()
 
 	return reader, size, err
+}
+
+func gfreg(path string, d uintptr) {
+	var gf C.GFS_File
+fmt.Fprintf(os.Stderr, "##################### GFREG ##################\n")
+	gfarm_url := C.CString(path)
+	defer C.free(unsafe.Pointer(gfarm_url))
+
+	flags := C.GFARM_FILE_WRONLY | C.GFARM_FILE_TRUNC
+	C.gfs_pio_create(gfarm_url, C.int(flags), 0600, (*C.GFS_File)(&gf))
+	C.gfs_pio_sendfile(gf, 0, C.int(d), 0, -1, (*C.long)(C.NULL))
+	C.gfs_pio_close(gf)
+}
+
+func gfexport(path string, d uintptr) {
+	var gf C.GFS_File
+	var st C.struct_gfs_stat
+fmt.Fprintf(os.Stderr, "##################### GFEXPORT ##################\n")
+	gfarm_url := C.CString(path)
+	defer C.free(unsafe.Pointer(gfarm_url))
+	C.gfs_pio_open(gfarm_url, C.GFARM_FILE_RDONLY, (*C.GFS_File)(unsafe.Pointer(&gf)))
+	C.gfs_fstat(gf, (*C.struct_gfs_stat)(unsafe.Pointer(&st)))
+	size := st.st_size
+	C.gfs_stat_free((*C.struct_gfs_stat)(unsafe.Pointer(&st)))
+	C.gfs_pio_internal_set_view_section(gf, (*C.char)(C.NULL))
+	C.gfs_pio_recvfile(gf, 0, C.int(d), 0, size, (*C.long)(C.NULL))
+	C.gfs_pio_close(gf)
+}
+
+func gfarm_initialize() {
+	e := C.gfarm_initialize((*C.int)(C.NULL), (***C.char)(C.NULL))
+	if e != C.GFARM_ERR_NO_ERROR {
+		fmt.Fprintf(os.Stderr, "%s\n", C.gfarm_error_string(C.int(e)))
+	}
+}
+
+func gfarm_terminate() {
+	e := C.gfarm_terminate()
+	if e != C.GFARM_ERR_NO_ERROR {
+		fmt.Fprintf(os.Stderr, "gfarm_terminate(): %s\n", C.gfarm_error_string(e))
+	}
 }
