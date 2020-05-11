@@ -153,7 +153,11 @@ func fsMkdir(ctx context.Context, dirPath string) (err error) {
 // fsStatFileDir, fsStatFile, fsStatDir.
 func fsStat(ctx context.Context, statLoc string) (os.FileInfo, error) {
 //gfarm_write_test := bucket == "usr" && object == "b/c"
-fmt.Fprintf(os.Stderr, "@@@: fsStatFile: %q\n", statLoc)
+gfarm_stat_test := statLoc == "/mnt/data/nas1/usr/b/c"
+fmt.Fprintf(os.Stderr, "@@@: fsStat: %q  =>  %v\n", statLoc, gfarm_stat_test)
+if gfarm_stat_test {
+	return gfarmFsStatFile(statLoc)
+}
 	if statLoc == "" {
 		logger.LogIf(ctx, errInvalidArgument)
 		return nil, errInvalidArgument

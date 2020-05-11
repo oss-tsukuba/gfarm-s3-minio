@@ -26,6 +26,7 @@ package cmd
 // #include "gfarm/gfs_pio.h"
 // #include "gfarm/context.h"
 // #include "gfarm/gfs_rdma.h"
+// int gfarm_s_isdir(gfarm_mode_t m) { return GFARM_S_ISDIR(m); }
 import "C"
 
 import (
@@ -631,6 +632,7 @@ fmt.Fprintf(os.Stderr, "@@@: GetObjectNInfo: fsOpenFile(%q, %d),  gfarm_read_tes
 {
 	var err error
 	if gfarm_read_test {
+		gfarm_initialize()
 		readCloser, size, err = tst_read_from_gfarm(fsObjPath)
 	} else {
 		readCloser, size, err = fsOpenFile(ctx, fsObjPath, off)
@@ -648,6 +650,7 @@ fmt.Fprintf(os.Stderr, "@@@: GetObjectNInfo: fsOpenFile(%q, %d),  gfarm_read_tes
 
 	// Check if range is valid
 	if off > size || off+length > size {
+fmt.Fprintf(os.Stderr, "@@@: GetObjectNInfo: InvalidRange off:%v length:%v size:%v\n", off, length, size)
 		err = InvalidRange{off, length, size}
 		logger.LogIf(ctx, err, logger.Application)
 		closeFn()
@@ -761,6 +764,7 @@ fmt.Fprintf(os.Stderr, "@@@: getObject: fsOpenFile(%q, %d)\n", fsObjPath, offset
 
 	// Reply back invalid range if the input offset and length fall out of range.
 	if offset > size || offset+length > size {
+fmt.Fprintf(os.Stderr, "@@@: getObject: InvalidRange offset:%v length:%v size:%v\n", offset, length, size)
 		err = InvalidRange{offset, length, size}
 		logger.LogIf(ctx, err, logger.Application)
 		return err
@@ -1045,7 +1049,11 @@ fmt.Fprintf(os.Stderr, "@@@: putObject: fs.fsPath: %q  bucket: %q  object: %q  g
 	buf := make([]byte, int(bufSize))
 if gfarm_write_test {
 	fsNSObjPath := pathJoin(fs.fsPath, bucket, object)
-fmt.Fprintf(os.Stderr, "@@@: putObject: tst_write_to_gfarm %T %v\n", fsNSObjPath, fsNSObjPath)
+fmt.Fprintf(os.Stderr, "@@@: putObject: tst_write_to_gfarm %q\n", fsNSObjPath)
+
+	gfarm_initialize()
+	gfarm_mkdir_p(fsNSObjPath, 0777)
+
 	bytesWritten, err := tst_write_to_gfarm(fsNSObjPath, data, buf, data.Size())
 	if err != nil {
 		return ObjectInfo{}, toObjectErr(err, bucket, object)
@@ -1092,6 +1100,17 @@ fmt.Fprintf(os.Stderr, "@@@: putObject: writing done\n")
 		}
 	}
 
+if gfarm_write_test {
+	fi, err := gfarmFsStatFile(pathJoin(fs.fsPath, bucket, object))
+	if err != nil {
+fmt.Fprintf(os.Stderr, "@@@: putObject: stat failed\n")
+		return ObjectInfo{}, toObjectErr(err, bucket, object)
+	}
+
+fmt.Fprintf(os.Stderr, "@@@: putObject: success\n")
+	// Success.
+	return fsMeta.ToObjectInfo(bucket, object, fi), nil
+} else {
 	// Stat the file to fetch timestamp, size.
 	fi, err := fsStatFile(ctx, pathJoin(fs.fsPath, bucket, object))
 	if err != nil {
@@ -1102,6 +1121,7 @@ fmt.Fprintf(os.Stderr, "@@@: putObject: stat failed\n")
 fmt.Fprintf(os.Stderr, "@@@: putObject: success\n")
 	// Success.
 	return fsMeta.ToObjectInfo(bucket, object, fi), nil
+}
 }
 
 // DeleteObjects - deletes an object from a bucket, this operation is destructive
@@ -1497,7 +1517,6 @@ func (fs *FSObjects) IsReady(_ context.Context) bool {
 func tst_write_to_gfarm(filePath string, reader io.Reader, buf []byte, fallocSize int64) (int64, error) {
 fmt.Fprintf(os.Stderr, "@@@: TST_WRITE_TO_GFARM => gfreg_d => gfreg_main\n")
 //@fmt.Fprintf(os.Stderr, "@@@: %v %v %v\n", reader, buf, fallocSize)
-	gfarm_initialize()
 
 	c := make(chan int)
 
@@ -1520,15 +1539,37 @@ fmt.Fprintf(os.Stderr, "@@@: TST_WRITE_TO_GFARM => gfreg_d => gfreg_main\n")
 	return fallocSize, nil
 }
 
+type gfarmController struct {
+	p *os.File
+	c chan int
+}
+
+func (g gfarmController) Close() error {
+fmt.Fprintf(os.Stderr, "@@@: gfarm.Close CALLED\n")
+	r := <-g.c
+	if r != 0 {
+		panic("!chan")
+	}
+	return g.p.Close()
+}
+
+func (g gfarmController) Read(b []byte) (n int, err error) {
+fmt.Fprintf(os.Stderr, "@@@: gfarm.Reader CALLED\n")
+	return g.p.Read(b)
+}
+
 func tst_read_from_gfarm(fsObjPath string) (io.ReadCloser, int64, error) {
 fmt.Fprintf(os.Stderr, "@@@: TST_READ_FROM_GFARM == gfexport_main\n")
 	var size int64
+	var g gfarmController
 
-	gfarm_initialize()
+	fi, e := gfarmFsStatFile(fsObjPath)
+	if e != nil { return nil, 0, e }
 
 	reader, w1, err := os.Pipe()
 	if err != nil { return nil, 0, err }
-	size = 16
+
+	size = fi.Size()
 
 	c := make(chan int)
 
@@ -1541,7 +1582,9 @@ fmt.Fprintf(os.Stderr, "@@@: TST_READ_FROM_GFARM == gfexport_main\n")
 //XXX  Close should wait until <-c is available
 	//C.gfarm_terminate()
 
-	return reader, size, err
+	g.p = reader
+	g.c = c
+	return g, size, nil
 }
 
 func gfreg(path string, d uintptr) {
@@ -1558,14 +1601,14 @@ fmt.Fprintf(os.Stderr, "##################### GFREG ##################\n")
 
 func gfexport(path string, d uintptr) {
 	var gf C.GFS_File
-	var st C.struct_gfs_stat
+	var sb C.struct_gfs_stat
 fmt.Fprintf(os.Stderr, "##################### GFEXPORT ##################\n")
 	gfarm_url := C.CString(path)
 	defer C.free(unsafe.Pointer(gfarm_url))
 	C.gfs_pio_open(gfarm_url, C.GFARM_FILE_RDONLY, (*C.GFS_File)(unsafe.Pointer(&gf)))
-	C.gfs_fstat(gf, (*C.struct_gfs_stat)(unsafe.Pointer(&st)))
-	size := st.st_size
-	C.gfs_stat_free((*C.struct_gfs_stat)(unsafe.Pointer(&st)))
+	C.gfs_fstat(gf, (*C.struct_gfs_stat)(unsafe.Pointer(&sb)))
+	size := sb.st_size
+	C.gfs_stat_free((*C.struct_gfs_stat)(unsafe.Pointer(&sb)))
 	C.gfs_pio_internal_set_view_section(gf, (*C.char)(C.NULL))
 	C.gfs_pio_recvfile(gf, 0, C.int(d), 0, size, (*C.long)(C.NULL))
 	C.gfs_pio_close(gf)
@@ -1583,4 +1626,115 @@ func gfarm_terminate() {
 	if e != C.GFARM_ERR_NO_ERROR {
 		fmt.Fprintf(os.Stderr, "gfarm_terminate(): %s\n", C.gfarm_error_string(e))
 	}
+}
+
+func gfarm_mkdir_p(path string, mode int) bool {
+	var sb C.struct_gfs_stat
+
+	cpath := C.CString(path)
+//	defer C.free(unsafe.Pointer(cpath))
+	parent := C.gfarm_url_dir((*C.char)(cpath))
+//	defer C.free(unsafe.Pointer(&parent))
+	gparent := C.GoString(parent)
+
+fmt.Fprintf(os.Stderr, "@@@: gfarm_mkdir_p: @@@ @@@ @@@ %q => %q\n", path, gparent)
+
+fmt.Fprintf(os.Stderr, "@@@: gfarm_mkdir_p: @@@ @@@ @@@ 0\n")
+	e := C.gfs_stat(parent, (*C.struct_gfs_stat)(unsafe.Pointer(&sb)))
+fmt.Fprintf(os.Stderr, "@@@: gfarm_mkdir_p: @@@ @@@ @@@ A\n")
+//	defer C.gfs_stat_free((*C.struct_gfs_stat)(unsafe.Pointer(&sb)))
+fmt.Fprintf(os.Stderr, "@@@: gfarm_mkdir_p: @@@ @@@ @@@ B\n")
+	if e == C.GFARM_ERR_NO_ERROR {
+fmt.Fprintf(os.Stderr, "@@@: gfarm_mkdir_p: @@@ @@@ @@@ C\n")
+		if C.gfarm_s_isdir((C.gfarm_mode_t)(sb.st_mode)) != C.int(0) {
+			fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ %q: exists\n", gparent)
+			return true
+		} else {
+			fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ gfarm_mkdir_p: %q %s\n", gparent, C.gfarm_error_string(C.int(e)))
+			return false
+		}
+	} else if e == C.GFARM_ERR_NO_SUCH_FILE_OR_DIRECTORY {
+fmt.Fprintf(os.Stderr, "@@@: gfarm_mkdir_p: @@@ @@@ @@@ D\n")
+		if !gfarm_mkdir_p(gparent, mode) {
+			fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ gfarm_mkdir_p: %q %s\n", gparent, C.gfarm_error_string(C.int(e)))
+			return false
+		}
+fmt.Fprintf(os.Stderr, "@@@: gfs_mkdir: @@@ @@@ @@@ DDD %s\n", gparent)
+		e = C.gfs_mkdir((*C.char)(parent), (C.gfarm_mode_t)(mode))
+		if e != C.GFARM_ERR_NO_ERROR {
+			fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ gfarm_mkdir_p: %q %s\n", gparent, C.gfarm_error_string(C.int(e)))
+			return false
+		}
+		return true
+	}
+fmt.Fprintf(os.Stderr, "@@@: gfarm_mkdir_p: @@@ @@@ @@@ E\n")
+
+	fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ gfarm_mkdir_p: %q %s\n", gparent, C.gfarm_error_string(C.int(e)))
+	return false
+}
+
+func gfarmFsStatFile(path string) (os.FileInfo, error) {
+	var r gfsFileInfo
+	var sb C.struct_gfs_stat
+
+	cpath := C.CString(path)
+//	defer C.free(unsafe.Pointer(cpath))
+	e := C.gfs_stat(cpath, (*C.struct_gfs_stat)(unsafe.Pointer(&sb)))
+//	defer C.gfs_stat_free((*C.struct_gfs_stat)(unsafe.Pointer(&sb)))
+	if e != C.GFARM_ERR_NO_ERROR {
+		errmsg := C.gfarm_error_string(C.int(e))
+//		defer C.free(unsafe.Pointer(errmsg))
+		r.e = C.GoString(errmsg)
+		return nil, r
+	}
+
+	r.name = path
+	r.size = int64(sb.st_size)
+	r.mode = os.FileMode(sb.st_mode)
+	r.modTime = time.Unix(int64(sb.st_mtimespec.tv_sec), int64(sb.st_mtimespec.tv_nsec))
+	r.isDir = C.gfarm_s_isdir((C.gfarm_mode_t)(sb.st_mode)) != C.int(0)
+
+	fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ gfarmFsStatFile: %s => %s\n", path, r.String())
+	return r, nil
+}
+
+type gfsFileInfo struct {
+	name string
+	size int64
+	mode os.FileMode
+	modTime time.Time
+	isDir bool
+	e string
+}
+
+func (r gfsFileInfo) Error() string {
+	return r.e
+}
+
+func (r gfsFileInfo) Name() string {
+	return r.name
+}
+
+func (r gfsFileInfo) Size() int64 {
+	return r.size
+}
+
+func (r gfsFileInfo) Mode() os.FileMode {
+	return r.mode
+}
+
+func (r gfsFileInfo) ModTime() time.Time {
+	return r.modTime
+}
+
+func (r gfsFileInfo) IsDir() bool {
+	return r.isDir
+}
+
+func (r gfsFileInfo) Sys() interface{} {
+	return nil
+}
+
+func (r gfsFileInfo) String() string {
+	return fmt.Sprintf("<gfsFileInfo name: %q  size: %v  mode: %v modTime: %v  isDir: %v>", r.name, r.size, r.mode, r.modTime, r.isDir)
 }
