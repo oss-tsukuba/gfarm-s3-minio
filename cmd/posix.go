@@ -25,6 +25,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+"fmt"
 	slashpath "path"
 	"path/filepath"
 	"runtime"
@@ -1428,6 +1429,7 @@ func (s *posix) StatFile(volume, path string) (file FileInfo, err error) {
 // with files in it. Returns nil for a non-empty directory even when
 // recursive is set to false.
 func deleteFile(basePath, deletePath string, recursive bool) error {
+fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ deleteFile: %q %q %v\n", basePath, deletePath, recursive)
 	if basePath == "" || deletePath == "" {
 		return nil
 	}

@@ -432,6 +432,7 @@ func (fs *FSObjects) ListBuckets(ctx context.Context) ([]BucketInfo, error) {
 // DeleteBucket - delete a bucket and all the metadata associated
 // with the bucket including pending multipart, object metadata.
 func (fs *FSObjects) DeleteBucket(ctx context.Context, bucket string, forceDelete bool) error {
+fmt.Fprintf(os.Stderr, "@@@: DeleteBucket: bucket: %q  forceDelete: %v\n", bucket, forceDelete)
 	if !forceDelete {
 		bucketLock := fs.NewNSLock(ctx, bucket, "")
 		if err := bucketLock.GetLock(globalObjectTimeout); err != nil {
@@ -1137,6 +1138,7 @@ func (fs *FSObjects) DeleteObjects(ctx context.Context, bucket string, objects [
 // DeleteObject - deletes an object from a bucket, this operation is destructive
 // and there are no rollbacks supported.
 func (fs *FSObjects) DeleteObject(ctx context.Context, bucket, object string) error {
+fmt.Fprintf(os.Stderr, "@@@: DeleteObject: bucket: %q  object: %q\n", bucket, object)
 	// Acquire a write lock before deleting the object.
 	objectLock := fs.NewNSLock(ctx, bucket, object)
 	if err := objectLock.GetLock(globalOperationTimeout); err != nil {
@@ -1629,57 +1631,62 @@ func gfarm_terminate() {
 }
 
 func gfarm_mkdir_p(path string, mode int) bool {
-	var sb C.struct_gfs_stat
-
 	cpath := C.CString(path)
-//	defer C.free(unsafe.Pointer(cpath))
+	defer C.free(unsafe.Pointer(cpath))
+	return gfarm_mkdir_pc(cpath, mode)
+}
+
+func gfarm_mkdir_pc(cpath *C.char, mode int) bool {
+	var sb C.struct_gfs_stat
 	parent := C.gfarm_url_dir((*C.char)(cpath))
 //	defer C.free(unsafe.Pointer(&parent))
-	gparent := C.GoString(parent)
 
-fmt.Fprintf(os.Stderr, "@@@: gfarm_mkdir_p: @@@ @@@ @@@ %q => %q\n", path, gparent)
+fmt.Fprintf(os.Stderr, "@@@: gfarm_mkdir_pc: @@@ @@@ @@@ %q => %q\n", C.GoString(cpath), C.GoString(parent))
 
-fmt.Fprintf(os.Stderr, "@@@: gfarm_mkdir_p: @@@ @@@ @@@ 0\n")
+fmt.Fprintf(os.Stderr, "@@@: gfarm_mkdir_pc: @@@ @@@ @@@ 0\n")
 	e := C.gfs_stat(parent, (*C.struct_gfs_stat)(unsafe.Pointer(&sb)))
-fmt.Fprintf(os.Stderr, "@@@: gfarm_mkdir_p: @@@ @@@ @@@ A\n")
+fmt.Fprintf(os.Stderr, "@@@: gfarm_mkdir_pc: @@@ @@@ @@@ A\n")
 //	defer C.gfs_stat_free((*C.struct_gfs_stat)(unsafe.Pointer(&sb)))
-fmt.Fprintf(os.Stderr, "@@@: gfarm_mkdir_p: @@@ @@@ @@@ B\n")
+fmt.Fprintf(os.Stderr, "@@@: gfarm_mkdir_pc: @@@ @@@ @@@ B\n")
 	if e == C.GFARM_ERR_NO_ERROR {
-fmt.Fprintf(os.Stderr, "@@@: gfarm_mkdir_p: @@@ @@@ @@@ C\n")
+fmt.Fprintf(os.Stderr, "@@@: gfarm_mkdir_pc: @@@ @@@ @@@ C\n")
 		if C.gfarm_s_isdir((C.gfarm_mode_t)(sb.st_mode)) != C.int(0) {
-			fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ %q: exists\n", gparent)
+			fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ %q: exists\n", C.GoString(parent))
 			return true
 		} else {
-			fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ gfarm_mkdir_p: %q %s\n", gparent, C.gfarm_error_string(C.int(e)))
+			fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ gfarm_mkdir_pc: %q %s\n", C.GoString(parent), C.gfarm_error_string(C.int(e)))
 			return false
 		}
 	} else if e == C.GFARM_ERR_NO_SUCH_FILE_OR_DIRECTORY {
-fmt.Fprintf(os.Stderr, "@@@: gfarm_mkdir_p: @@@ @@@ @@@ D\n")
-		if !gfarm_mkdir_p(gparent, mode) {
-			fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ gfarm_mkdir_p: %q %s\n", gparent, C.gfarm_error_string(C.int(e)))
+fmt.Fprintf(os.Stderr, "@@@: gfarm_mkdir_pc: @@@ @@@ @@@ D\n")
+		if !gfarm_mkdir_pc(parent, mode) {
+			fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ gfarm_mkdir_pc: %q %s\n", C.GoString(parent), C.gfarm_error_string(C.int(e)))
 			return false
 		}
-fmt.Fprintf(os.Stderr, "@@@: gfs_mkdir: @@@ @@@ @@@ DDD %s\n", gparent)
+fmt.Fprintf(os.Stderr, "@@@: gfs_mkdir: @@@ @@@ @@@ DDD %s\n", C.GoString(parent))
 		e = C.gfs_mkdir((*C.char)(parent), (C.gfarm_mode_t)(mode))
 		if e != C.GFARM_ERR_NO_ERROR {
-			fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ gfarm_mkdir_p: %q %s\n", gparent, C.gfarm_error_string(C.int(e)))
+			fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ gfarm_mkdir_pc: %q %s\n", C.GoString(parent), C.gfarm_error_string(C.int(e)))
 			return false
 		}
 		return true
 	}
-fmt.Fprintf(os.Stderr, "@@@: gfarm_mkdir_p: @@@ @@@ @@@ E\n")
+fmt.Fprintf(os.Stderr, "@@@: gfarm_mkdir_pc: @@@ @@@ @@@ E\n")
 
-	fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ gfarm_mkdir_p: %q %s\n", gparent, C.gfarm_error_string(C.int(e)))
+	fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ gfarm_mkdir_pc: %q %s\n", C.GoString(parent), C.gfarm_error_string(C.int(e)))
 	return false
 }
 
 func gfarmFsStatFile(path string) (os.FileInfo, error) {
 	var r gfsFileInfo
 	var sb C.struct_gfs_stat
+	var sbp *C.struct_gfs_stat
 
 	cpath := C.CString(path)
-//	defer C.free(unsafe.Pointer(cpath))
-	e := C.gfs_stat(cpath, (*C.struct_gfs_stat)(unsafe.Pointer(&sb)))
+	defer C.free(unsafe.Pointer(cpath))
+	sbp = (*C.struct_gfs_stat)(unsafe.Pointer(&sb))
+	//e := C.gfs_stat(cpath, (*C.struct_gfs_stat)(unsafe.Pointer(&sb)))
+	e := C.gfs_stat(cpath, sbp)
 //	defer C.gfs_stat_free((*C.struct_gfs_stat)(unsafe.Pointer(&sb)))
 	if e != C.GFARM_ERR_NO_ERROR {
 		errmsg := C.gfarm_error_string(C.int(e))

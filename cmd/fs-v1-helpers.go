@@ -426,6 +426,7 @@ func fsRenameFile(ctx context.Context, sourcePath, destPath string) error {
 
 // fsDeleteFile is a wrapper for deleteFile(), after checking the path length.
 func fsDeleteFile(ctx context.Context, basePath, deletePath string) error {
+fmt.Fprintf(os.Stderr, "@@@: fsDeleteFile: basePath: %q  deletePath: %q\n", basePath, deletePath)
 	if err := checkPathLength(basePath); err != nil {
 		logger.LogIf(ctx, err)
 		return err
