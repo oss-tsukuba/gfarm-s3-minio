@@ -16,16 +16,10 @@
 
 package cmd
 
-// #cgo CFLAGS: -g -Wall -I/usr/local/include -I/home/user1/gfarm/lib/libgfarm
+// #cgo CFLAGS: -g -Wall -I/usr/local/include 
 // #cgo LDFLAGS: -L/usr/local/lib -lgfarm -Wl,-rpath,/usr/local/lib
 // #include <stdlib.h>
 // #include <gfarm/gfarm.h>
-// #include "gfarm/host.h"
-// #include "gfarm/config.h"
-// #include "gfarm/gfarm_path.h"
-// #include "gfarm/gfs_pio.h"
-// #include "gfarm/context.h"
-// #include "gfarm/gfs_rdma.h"
 // int gfarm_s_isdir(gfarm_mode_t m) { return GFARM_S_ISDIR(m); }
 import "C"
 
@@ -1611,7 +1605,7 @@ fmt.Fprintf(os.Stderr, "##################### GFEXPORT ##################\n")
 	C.gfs_fstat(gf, (*C.struct_gfs_stat)(unsafe.Pointer(&sb)))
 	size := sb.st_size
 	C.gfs_stat_free((*C.struct_gfs_stat)(unsafe.Pointer(&sb)))
-	C.gfs_pio_internal_set_view_section(gf, (*C.char)(C.NULL))
+	//C.gfs_pio_internal_set_view_section(gf, (*C.char)(C.NULL))
 	C.gfs_pio_recvfile(gf, 0, C.int(d), 0, size, (*C.long)(C.NULL))
 	C.gfs_pio_close(gf)
 }
