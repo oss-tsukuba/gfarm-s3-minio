@@ -76,21 +76,21 @@ func gfarmGatewayMain(ctx *cli.Context) {
 		cli.ShowCommandHelpAndExit(ctx, gfarmBackend, 1)
 	}
 
-	minio.StartGateway(ctx, &GFARM{ctx.Args().First()})
+	minio.StartGateway(ctx, &Gfarm{ctx.Args().First()})
 }
 
-// GFARM implements Gateway.
-type GFARM struct {
+// Gfarm implements Gateway.
+type Gfarm struct {
 	path string
 }
 
 // Name implements Gateway interface.
-func (g *GFARM) Name() string {
+func (g *Gfarm) Name() string {
 	return gfarmBackend
 }
 
 // NewGatewayLayer returns gfarm gatewaylayer.
-func (g *GFARM) NewGatewayLayer(creds auth.Credentials) (minio.ObjectLayer, error) {
+func (g *Gfarm) NewGatewayLayer(creds auth.Credentials) (minio.ObjectLayer, error) {
 	var err error
 	newObject, err := minio.NewFSObjectLayer(g.path)
 	if err != nil {
@@ -100,7 +100,7 @@ func (g *GFARM) NewGatewayLayer(creds auth.Credentials) (minio.ObjectLayer, erro
 }
 
 // Production - gfarm gateway is production ready.
-func (g *GFARM) Production() bool {
+func (g *Gfarm) Production() bool {
 	return true
 }
 
