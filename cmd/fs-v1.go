@@ -20,7 +20,7 @@ package cmd
 // #cgo LDFLAGS: -L/usr/local/lib -lgfarm -Wl,-rpath,/usr/local/lib
 // #include <stdlib.h>
 // #include <gfarm/gfarm.h>
-// int gfarm_s_isdir(gfarm_mode_t m) { return GFARM_S_ISDIR(m); }
+// inline int gfarm_s_isdir(gfarm_mode_t m) { return GFARM_S_ISDIR(m); }
 import "C"
 
 import (
@@ -1640,9 +1640,9 @@ fmt.Fprintf(os.Stderr, "@@@: gfarm_mkdir_pc: @@@ @@@ @@@ %q => %q\n", C.GoString
 fmt.Fprintf(os.Stderr, "@@@: gfarm_mkdir_pc: @@@ @@@ @@@ 0\n")
 	e := C.gfs_stat(parent, (*C.struct_gfs_stat)(unsafe.Pointer(&sb)))
 fmt.Fprintf(os.Stderr, "@@@: gfarm_mkdir_pc: @@@ @@@ @@@ A\n")
-//	defer C.gfs_stat_free((*C.struct_gfs_stat)(unsafe.Pointer(&sb)))
 fmt.Fprintf(os.Stderr, "@@@: gfarm_mkdir_pc: @@@ @@@ @@@ B\n")
 	if e == C.GFARM_ERR_NO_ERROR {
+		defer C.gfs_stat_free((*C.struct_gfs_stat)(unsafe.Pointer(&sb)))
 fmt.Fprintf(os.Stderr, "@@@: gfarm_mkdir_pc: @@@ @@@ @@@ C\n")
 		if C.gfarm_s_isdir((C.gfarm_mode_t)(sb.st_mode)) != C.int(0) {
 			fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ %q: exists\n", C.GoString(parent))
@@ -1681,13 +1681,13 @@ func gfarmFsStatFile(path string) (os.FileInfo, error) {
 	sbp = (*C.struct_gfs_stat)(unsafe.Pointer(&sb))
 	//e := C.gfs_stat(cpath, (*C.struct_gfs_stat)(unsafe.Pointer(&sb)))
 	e := C.gfs_stat(cpath, sbp)
-//	defer C.gfs_stat_free((*C.struct_gfs_stat)(unsafe.Pointer(&sb)))
 	if e != C.GFARM_ERR_NO_ERROR {
 		errmsg := C.gfarm_error_string(C.int(e))
 //		defer C.free(unsafe.Pointer(errmsg))
 		r.e = C.GoString(errmsg)
 		return nil, r
 	}
+	defer C.gfs_stat_free((*C.struct_gfs_stat)(unsafe.Pointer(&sb)))
 
 	r.name = path
 	r.size = int64(sb.st_size)
