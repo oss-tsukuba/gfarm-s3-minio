@@ -21,6 +21,9 @@ import (
 
 	"github.com/gorilla/mux"
 	xhttp "github.com/minio/minio/cmd/http"
+
+//	"fmt"
+//	"os"
 )
 
 func newHTTPServerFn() *xhttp.Server {
@@ -41,6 +44,7 @@ func newObjectLayerFn() ObjectLayer {
 	if globalSafeMode {
 		return nil
 	}
+//fmt.Fprintf(os.Stderr, "@@@ newObjectLayerFn => %T %v\n", globalObjectAPI, globalObjectAPI)
 	return globalObjectAPI
 }
 
