@@ -18,13 +18,13 @@ package gfarm
 
 import (
 	"context"
-	"path"
-	"sync/atomic"
+//	"path"
+//	"sync/atomic"
 
 	"github.com/minio/cli"
 	minio "github.com/minio/minio/cmd"
 	"github.com/minio/minio/pkg/auth"
-	"github.com/minio/minio/cmd/logger"
+//	"github.com/minio/minio/cmd/logger"
 
 	"net/http"
 	"fmt"
@@ -148,9 +148,9 @@ fmt.Fprintf(os.Stderr, "@@@ GetObjectNInfo: ctx:%p bucket:%q object:%q rs:%v h:%
 func (fs *GfarmFSObjects) PutObject(ctx context.Context, bucket string, object string, r *minio.PutObjReader, opts minio.ObjectOptions) (objInfo minio.ObjectInfo, retErr error) {
 fmt.Fprintf(os.Stderr, "@@@ 111 @@@ GfarmFSObjects.PutObject: ctx:%p bucket:%q object:%q r:%p opts:%v\n", ctx, bucket, object, r, opts)
 defer fmt.Fprintf(os.Stderr, "@@@ 111 @@@ EXIT\n")
-	return fs.PutObjec2(ctx, bucket, object, r, opts)
+	//return fs.PutObjec2(ctx, bucket, object, r, opts)
 	//return minio.PutObjec2(fs.ObjectLayer, ctx, bucket, object, r, opts)
-	//return fs.ObjectLayer.PutObject(ctx, bucket, object, r, opts)
+	return fs.ObjectLayer.PutObject(ctx, bucket, object, r, opts)
 }
 
 func (fs *GfarmFSObjects) putObject(ctx context.Context, bucket string, object string, r *minio.PutObjReader, opts minio.ObjectOptions) (objInfo minio.ObjectInfo, retErr error) {
@@ -159,26 +159,26 @@ defer fmt.Fprintf(os.Stderr, "@@@ 333 @@@ EXIT\n")
 	return fs.putObject(ctx, bucket, object, r, opts)
 }
 
-func (fs *GfarmFSObjects) PutObjec2(ctx context.Context, bucket string, object string, r *minio.PutObjReader, opts minio.ObjectOptions) (objInfo minio.ObjectInfo, retErr error) {
-fmt.Fprintf(os.Stderr, "@@@ 999 @@@ FSObjects.PutObjec2: ctx:%p bucket:%q object:%q r:%p opts:%v\n", ctx, bucket, object, r, opts)
-defer fmt.Fprintf(os.Stderr, "@@@ 999 @@@ EXIT\n");
-	if err := checkPutObjectArgs(ctx, bucket, object, fs, r.Size()); err != nil {
-		return minio.ObjectInfo{}, err
-	}
-
-	// Lock the object.
-	objectLock := (minio.FSObjects)(fs).NewNSLock(ctx, bucket, object)
-	if err := objectLock.GetLock(globalObjectTimeout); err != nil {
-		logger.LogIf(ctx, err)
-		return objInfo, err
-	}
-	defer objectLock.Unlock()
-	defer minio.ObjectPathUpdated(path.Join(bucket, object))
-
-	atomic.AddInt64(&(*minio.FSObjects)(fs.ObjectLayer).activeIOCount, 1)
-	defer func() {
-		atomic.AddInt64(&(*minio.FSObjects)(fs.ObjectLayer).activeIOCount, -1)
-	}()
-
-	return fs.putObject(ctx, bucket, object, r, opts)
-}
+//func (fs *GfarmFSObjects) PutObjec2(ctx context.Context, bucket string, object string, r *minio.PutObjReader, opts minio.ObjectOptions) (objInfo minio.ObjectInfo, retErr error) {
+//fmt.Fprintf(os.Stderr, "@@@ 999 @@@ FSObjects.PutObjec2: ctx:%p bucket:%q object:%q r:%p opts:%v\n", ctx, bucket, object, r, opts)
+//defer fmt.Fprintf(os.Stderr, "@@@ 999 @@@ EXIT\n");
+//	if err := checkPutObjectArgs(ctx, bucket, object, fs, r.Size()); err != nil {
+//		return minio.ObjectInfo{}, err
+//	}
+//
+//	// Lock the object.
+//	objectLock := (minio.FSObjects)(fs).NewNSLock(ctx, bucket, object)
+//	if err := objectLock.GetLock(globalObjectTimeout); err != nil {
+//		logger.LogIf(ctx, err)
+//		return objInfo, err
+//	}
+//	defer objectLock.Unlock()
+//	defer minio.ObjectPathUpdated(path.Join(bucket, object))
+//
+//	atomic.AddInt64(&(*minio.FSObjects)(fs.ObjectLayer).activeIOCount, 1)
+//	defer func() {
+//		atomic.AddInt64(&(*minio.FSObjects)(fs.ObjectLayer).activeIOCount, -1)
+//	}()
+//
+//	return fs.putObject(ctx, bucket, object, r, opts)
+//}
