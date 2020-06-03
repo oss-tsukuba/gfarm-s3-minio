@@ -123,7 +123,7 @@ func initMetaVolumeFS(fsPath, fsUUID string) error {
 
 // NewFSObjectLayer - initialize new fs object layer.
 func NewFSObjectLayer(fsPath string) (ObjectLayer, error) {
-fmt.Fprintf(os.Stderr, "@@@ NewFSObjectLayer: %q\n", fsPath)
+//fmt.Fprintf(os.Stderr, "@@@ NewFSObjectLayer: %q\n", fsPath)
 	ctx := GlobalContext
 	if fsPath == "" {
 		return nil, errInvalidArgument
@@ -186,7 +186,7 @@ fmt.Fprintf(os.Stderr, "@@@ NewFSObjectLayer: %q\n", fsPath)
 	go intDataUpdateTracker.start(GlobalContext, fsPath)
 
 	// Return successfully initialized object layer.
-fmt.Fprintf(os.Stderr, "@@@ NewFSObjectLayer: fs = %T %v\n", fs, fs)
+//fmt.Fprintf(os.Stderr, "@@@ NewFSObjectLayer: fs = %T %v\n", fs, fs)
 	return fs, nil
 }
 
@@ -541,7 +541,7 @@ func (fs *FSObjects) CopyObject(ctx context.Context, srcBucket, srcObject, dstBu
 // GetObjectNInfo - returns object info and a reader for object
 // content.
 func (fs *FSObjects) GetObjectNInfo(ctx context.Context, bucket, object string, rs *HTTPRangeSpec, h http.Header, lockType LockType, opts ObjectOptions) (gr *GetObjectReader, err error) {
-fmt.Fprintf(os.Stderr, "@@@ FSObjects.GetObjectNInfo: ctx:%p bucket:%q object:%q rs:%v h:%v lockType:%v opts:%v\n", ctx, bucket, object, rs, h, lockType, opts)
+//fmt.Fprintf(os.Stderr, "@@@ FSObjects.GetObjectNInfo: ctx:%p bucket:%q object:%q rs:%v h:%v lockType:%v opts:%v\n", ctx, bucket, object, rs, h, lockType, opts)
 	if err = checkGetObjArgs(ctx, bucket, object); err != nil {
 		return nil, err
 	}
@@ -641,7 +641,7 @@ fmt.Fprintf(os.Stderr, "@@@ FSObjects.GetObjectNInfo: ctx:%p bucket:%q object:%q
 // startOffset indicates the starting read location of the object.
 // length indicates the total length of the object.
 func (fs *FSObjects) GetObject(ctx context.Context, bucket, object string, offset int64, length int64, writer io.Writer, etag string, opts ObjectOptions) (err error) {
-fmt.Fprintf(os.Stderr, "@@@ FSObjects.GetObject: ctx:%p bucket:%q object:%q offset:%d length:%d writer:%p etag:%q opts:%v\n", ctx, bucket, object, offset, length, writer, etag, opts)
+//fmt.Fprintf(os.Stderr, "@@@ FSObjects.GetObject: ctx:%p bucket:%q object:%q offset:%d length:%d writer:%p etag:%q opts:%v\n", ctx, bucket, object, offset, length, writer, etag, opts)
 	if err = checkGetObjArgs(ctx, bucket, object); err != nil {
 		return err
 	}
@@ -894,8 +894,8 @@ func (fs *FSObjects) parentDirIsObject(ctx context.Context, bucket, parent strin
 // Additionally writes `fs.json` which carries the necessary metadata
 // for future object operations.
 func (fs *FSObjects) PutObject(ctx context.Context, bucket string, object string, r *PutObjReader, opts ObjectOptions) (objInfo ObjectInfo, retErr error) {
-fmt.Fprintf(os.Stderr, "@@@ 222 @@@ FSObjects.PutObject: ctx:%p bucket:%q object:%q r:%p opts:%v\n", ctx, bucket, object, r, opts)
-defer fmt.Fprintf(os.Stderr, "@@@ 222 @@@ EXIT\n");
+//fmt.Fprintf(os.Stderr, "@@@ 222 @@@ FSObjects.PutObject: ctx:%p bucket:%q object:%q r:%p opts:%v\n", ctx, bucket, object, r, opts)
+//defer fmt.Fprintf(os.Stderr, "@@@ 222 @@@ EXIT\n");
 	if err := checkPutObjectArgs(ctx, bucket, object, fs, r.Size()); err != nil {
 		return ObjectInfo{}, err
 	}
@@ -919,8 +919,8 @@ defer fmt.Fprintf(os.Stderr, "@@@ 222 @@@ EXIT\n");
 
 // putObject - wrapper for PutObject
 func (fs *FSObjects) putObject(ctx context.Context, bucket string, object string, r *PutObjReader, opts ObjectOptions) (objInfo ObjectInfo, retErr error) {
-fmt.Fprintf(os.Stderr, "@@@ --- @@@@ FSObjects.putObject: ctx:%p bucket:%q object:%q r:%p opts:%v\n", ctx, bucket, object, r, opts)
-defer fmt.Fprintf(os.Stderr, "@@@ --- @@@@ EXIT\n")
+//fmt.Fprintf(os.Stderr, "@@@ --- @@@ FSObjects.putObject: ctx:%p bucket:%q object:%q r:%p opts:%v\n", ctx, bucket, object, r, opts)
+//defer fmt.Fprintf(os.Stderr, "@@@ --- @@@ EXIT\n")
 	data := r.Reader
 
 	// No metadata is set, allocate a new one.

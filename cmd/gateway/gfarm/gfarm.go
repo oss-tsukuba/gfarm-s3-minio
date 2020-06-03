@@ -1,9 +1,18 @@
 package gfarm
 
+// #cgo CFLAGS: -g -Wall -I/usr/local/include 
+// #cgo LDFLAGS: -L/usr/local/lib -lgfarm -Wl,-rpath,/usr/local/lib
+// #include <stdlib.h>
+// #include <gfarm/gfarm.h>
+// inline int gfarm_s_isdir(gfarm_mode_t m) { return GFARM_S_ISDIR(m); }
+import "C"
+
 import (
 	"os"
 	"time"
 	"fmt"
+	"io"
+	"unsafe"
 )
 
 type Client struct {
@@ -39,13 +48,15 @@ fmt.Fprintf(os.Stderr, "@@@ NewClient %v\n", o)
 }
 
 func (r *FileReadWriter) ReadAt(p []byte, off int64) (int, error) {
-fmt.Fprintf(os.Stderr, "@@@ ReadAt %v %v\n", p, off)
-	return r.f.ReadAt(p, off)
+	n, e := r.f.ReadAt(p, off)
+fmt.Fprintf(os.Stderr, "@@@ ReadAt(%d) => %v %v %v  ", off, n, e)
+	return n, e
 }
 
 func (w *FileReadWriter) Write(p []byte) (int, error) {
-fmt.Fprintf(os.Stderr, "@@@ Write %v\n", p)
-	return w.f.Write(p)
+	n, e := w.f.Write(p)
+fmt.Fprintf(os.Stderr, "@@@ Write => %d %v  ", n, e)
+	return n, e
 }
 
 func (clnt *Client) Rename(from, to string) error {
@@ -81,7 +92,7 @@ fmt.Fprintf(os.Stderr, "@@@ ReadDir %q\n", sep)
 func (clnt *Client) Open(path string) (*FileReadWriter, error) {
 fmt.Fprintf(os.Stderr, "@@@ Open %q\n", path)
 	var r *FileReadWriter
-	f, err := os.OpenFile(clnt.opts.Rootdir + path, os.O_RDONLY, 0755)
+	f, err := os.OpenFile(clnt.opts.Rootdir + path, os.O_RDONLY, 0666)
 	if err != nil { return nil, err }
 	r = &FileReadWriter{f}
 	return r, nil
@@ -108,7 +119,7 @@ fmt.Fprintf(os.Stderr, "@@@ Close\n")
 func (clnt *Client) Create(path string) (*FileReadWriter, error) {
 fmt.Fprintf(os.Stderr, "@@@ Create %q\n", path)
 	var w *FileReadWriter
-	f, err := os.OpenFile(clnt.opts.Rootdir + path, os.O_RDWR|os.O_CREATE, 0755)
+	f, err := os.OpenFile(clnt.opts.Rootdir + path, os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil { return nil, err }
 	w = &FileReadWriter{f}
 	return w, nil
@@ -130,7 +141,7 @@ fmt.Fprintf(os.Stderr, "@@@ CreateEmptyFile %q\n", path)
 func (clnt *Client) Append(path string) (*FileReadWriter, error) {
 fmt.Fprintf(os.Stderr, "@@@ Append %q\n", path)
 	var w *FileReadWriter
-	f, err := os.OpenFile(clnt.opts.Rootdir + path, os.O_RDWR|os.O_CREATE, 0755)
+	f, err := os.OpenFile(clnt.opts.Rootdir + path, os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil { return nil, err }
 	w = &FileReadWriter{f}
 	return w, nil
@@ -150,31 +161,265 @@ fmt.Fprintf(os.Stderr, "@@@ StatFs %q\n")
 }
 
 func (fi *FileInfo) Name() string {
-fmt.Fprintf(os.Stderr, "@@@ Name\n")
+fmt.Fprintf(os.Stderr, "@@@ Name: %q\n", fi.i.Name())
 	return fi.i.Name()
 }
 
 func (fi *FileInfo) Size() int64 {
-fmt.Fprintf(os.Stderr, "@@@ Size\n")
+fmt.Fprintf(os.Stderr, "@@@ Size: %d\n", fi.i.Size())
 	return fi.i.Size()
 }
 
 func (fi *FileInfo) Mode() os.FileMode {
-fmt.Fprintf(os.Stderr, "@@@ Size\n")
+fmt.Fprintf(os.Stderr, "@@@ Mode: %v\n", fi.i.Mode())
 	return fi.i.Mode()
 }
 
 func (fi *FileInfo) ModTime() time.Time {
-fmt.Fprintf(os.Stderr, "@@@ ModTime\n")
+fmt.Fprintf(os.Stderr, "@@@ ModTime: %v\n", fi.i.ModTime())
 	return fi.i.ModTime()
 }
 
 func (fi *FileInfo) IsDir() bool {
-fmt.Fprintf(os.Stderr, "@@@ IsDir\n")
+fmt.Fprintf(os.Stderr, "@@@ IsDir: %v\n", fi.i.IsDir())
 	return fi.i.IsDir()
 }
 
 func (fi *FileInfo) AccessTime() time.Time {
-fmt.Fprintf(os.Stderr, "@@@ AccessTime\n")
+fmt.Fprintf(os.Stderr, "@@@ AccessTime: %v\n", fi.i.ModTime())
 	return fi.i.ModTime()
+}
+
+
+func tst_write_to_gfarm(filePath string, reader io.Reader, buf []byte, fallocSize int64) (int64, error) {
+fmt.Fprintf(os.Stderr, "@@@: TST_WRITE_TO_GFARM => gfreg_d => gfreg_main\n")
+
+	c := make(chan int)
+
+	r0, writer, err := os.Pipe()
+	if err != nil { panic(err) }
+
+	go func() {
+		gfreg(filePath, r0.Fd())
+		r0.Close()
+		c<- 0
+	} ()
+
+	_, err = io.CopyBuffer(writer, io.LimitReader(reader, fallocSize), buf)
+
+	writer.Close()
+
+	r := <-c
+	if r != 0 { panic("panic") }
+
+	return fallocSize, nil
+}
+
+type gfarmController struct {
+	p *os.File
+	c chan int
+}
+
+func (g gfarmController) Close() error {
+fmt.Fprintf(os.Stderr, "@@@: gfarm.Close CALLED\n")
+	r := <-g.c
+	if r != 0 {
+		panic("!chan")
+	}
+	return g.p.Close()
+}
+
+func (g gfarmController) Read(b []byte) (n int, err error) {
+fmt.Fprintf(os.Stderr, "@@@: gfarm.Reader CALLED\n")
+	return g.p.Read(b)
+}
+
+func tst_read_from_gfarm(fsObjPath string) (io.ReadCloser, int64, error) {
+fmt.Fprintf(os.Stderr, "@@@: TST_READ_FROM_GFARM == gfexport_main\n")
+	var size int64
+	var g gfarmController
+
+	fi, e := gfarmFsStatFile(fsObjPath)
+	if e != nil { return nil, 0, e }
+
+	reader, w1, err := os.Pipe()
+	if err != nil { return nil, 0, err }
+
+	size = fi.Size()
+
+	c := make(chan int)
+
+	go func() {
+		gfexport(fsObjPath, w1.Fd())
+		w1.Close()
+		c<- 0
+	} ()
+
+//XXX  Close should wait until <-c is available
+	//C.gfarm_terminate()
+
+	g.p = reader
+	g.c = c
+	return g, size, nil
+}
+
+func gfreg(path string, d uintptr) {
+	var gf C.GFS_File
+fmt.Fprintf(os.Stderr, "##################### GFREG ##################\n")
+	gfarm_url := C.CString(path)
+	defer C.free(unsafe.Pointer(gfarm_url))
+
+	flags := C.GFARM_FILE_WRONLY | C.GFARM_FILE_TRUNC
+	C.gfs_pio_create(gfarm_url, C.int(flags), 0600, (*C.GFS_File)(&gf))
+	C.gfs_pio_sendfile(gf, 0, C.int(d), 0, -1, (*C.long)(C.NULL))
+	C.gfs_pio_close(gf)
+}
+
+func gfexport(path string, d uintptr) {
+	var gf C.GFS_File
+	var sb C.struct_gfs_stat
+fmt.Fprintf(os.Stderr, "##################### GFEXPORT ##################\n")
+	gfarm_url := C.CString(path)
+	defer C.free(unsafe.Pointer(gfarm_url))
+	C.gfs_pio_open(gfarm_url, C.GFARM_FILE_RDONLY, (*C.GFS_File)(unsafe.Pointer(&gf)))
+	C.gfs_fstat(gf, (*C.struct_gfs_stat)(unsafe.Pointer(&sb)))
+	size := sb.st_size
+	C.gfs_stat_free((*C.struct_gfs_stat)(unsafe.Pointer(&sb)))
+	C.gfs_pio_recvfile(gf, 0, C.int(d), 0, size, (*C.long)(C.NULL))
+	C.gfs_pio_close(gf)
+}
+
+func gfarm_initialize() {
+	e := C.gfarm_initialize((*C.int)(C.NULL), (***C.char)(C.NULL))
+	if e != C.GFARM_ERR_NO_ERROR {
+		fmt.Fprintf(os.Stderr, "%s\n", C.gfarm_error_string(C.int(e)))
+	}
+}
+
+func gfarm_terminate() {
+	e := C.gfarm_terminate()
+	if e != C.GFARM_ERR_NO_ERROR {
+		fmt.Fprintf(os.Stderr, "gfarm_terminate(): %s\n", C.gfarm_error_string(e))
+	}
+}
+
+func gfarm_mkdir_p(path string, mode int) bool {
+	cpath := C.CString(path)
+	defer C.free(unsafe.Pointer(cpath))
+	return gfarm_mkdir_pc(cpath, mode)
+}
+
+func gfarm_mkdir_pc(cpath *C.char, mode int) bool {
+	var sb C.struct_gfs_stat
+	parent := C.gfarm_url_dir((*C.char)(cpath))
+//	defer C.free(unsafe.Pointer(&parent))
+
+fmt.Fprintf(os.Stderr, "@@@: gfarm_mkdir_pc: @@@ @@@ @@@ %q => %q\n", C.GoString(cpath), C.GoString(parent))
+
+fmt.Fprintf(os.Stderr, "@@@: gfarm_mkdir_pc: @@@ @@@ @@@ 0\n")
+	e := C.gfs_stat(parent, (*C.struct_gfs_stat)(unsafe.Pointer(&sb)))
+fmt.Fprintf(os.Stderr, "@@@: gfarm_mkdir_pc: @@@ @@@ @@@ A\n")
+fmt.Fprintf(os.Stderr, "@@@: gfarm_mkdir_pc: @@@ @@@ @@@ B\n")
+	if e == C.GFARM_ERR_NO_ERROR {
+		defer C.gfs_stat_free((*C.struct_gfs_stat)(unsafe.Pointer(&sb)))
+fmt.Fprintf(os.Stderr, "@@@: gfarm_mkdir_pc: @@@ @@@ @@@ C\n")
+		if C.gfarm_s_isdir((C.gfarm_mode_t)(sb.st_mode)) != C.int(0) {
+			fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ %q: exists\n", C.GoString(parent))
+			return true
+		} else {
+			fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ gfarm_mkdir_pc: %q %s\n", C.GoString(parent), C.gfarm_error_string(C.int(e)))
+			return false
+		}
+	} else if e == C.GFARM_ERR_NO_SUCH_FILE_OR_DIRECTORY {
+fmt.Fprintf(os.Stderr, "@@@: gfarm_mkdir_pc: @@@ @@@ @@@ D\n")
+		if !gfarm_mkdir_pc(parent, mode) {
+			fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ gfarm_mkdir_pc: %q %s\n", C.GoString(parent), C.gfarm_error_string(C.int(e)))
+			return false
+		}
+fmt.Fprintf(os.Stderr, "@@@: gfs_mkdir: @@@ @@@ @@@ DDD %s\n", C.GoString(parent))
+		e = C.gfs_mkdir((*C.char)(parent), (C.gfarm_mode_t)(mode))
+		if e != C.GFARM_ERR_NO_ERROR {
+			fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ gfarm_mkdir_pc: %q %s\n", C.GoString(parent), C.gfarm_error_string(C.int(e)))
+			return false
+		}
+		return true
+	}
+fmt.Fprintf(os.Stderr, "@@@: gfarm_mkdir_pc: @@@ @@@ @@@ E\n")
+
+	fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ gfarm_mkdir_pc: %q %s\n", C.GoString(parent), C.gfarm_error_string(C.int(e)))
+	return false
+}
+
+func gfarmFsStatFile(path string) (os.FileInfo, error) {
+	var r gfsFileInfo
+	var sb C.struct_gfs_stat
+	var sbp *C.struct_gfs_stat
+
+	cpath := C.CString(path)
+	defer C.free(unsafe.Pointer(cpath))
+	sbp = (*C.struct_gfs_stat)(unsafe.Pointer(&sb))
+	//e := C.gfs_stat(cpath, (*C.struct_gfs_stat)(unsafe.Pointer(&sb)))
+	e := C.gfs_stat(cpath, sbp)
+	if e != C.GFARM_ERR_NO_ERROR {
+		errmsg := C.gfarm_error_string(C.int(e))
+//		defer C.free(unsafe.Pointer(errmsg))
+		r.e = C.GoString(errmsg)
+		return nil, r
+	}
+	defer C.gfs_stat_free((*C.struct_gfs_stat)(unsafe.Pointer(&sb)))
+
+	r.name = path
+	r.size = int64(sb.st_size)
+	r.mode = os.FileMode(sb.st_mode)
+	r.modTime = time.Unix(int64(sb.st_mtimespec.tv_sec), int64(sb.st_mtimespec.tv_nsec))
+	r.isDir = C.gfarm_s_isdir((C.gfarm_mode_t)(sb.st_mode)) != C.int(0)
+
+	fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ gfarmFsStatFile: %s => %s\n", path, r.String())
+	return r, nil
+}
+
+type gfsFileInfo struct {
+	name string
+	size int64
+	mode os.FileMode
+	modTime time.Time
+	isDir bool
+	e string
+}
+
+func (r gfsFileInfo) Error() string {
+	return r.e
+}
+
+func (r gfsFileInfo) Name() string {
+fmt.Fprintf(os.Stderr, "Name: %q", r.name)
+	return r.name
+}
+
+func (r gfsFileInfo) Size() int64 {
+fmt.Fprintf(os.Stderr, "Size: %d", r.size)
+	return r.size
+}
+
+func (r gfsFileInfo) Mode() os.FileMode {
+fmt.Fprintf(os.Stderr, "Mode: %v", r.mode)
+	return r.mode
+}
+
+func (r gfsFileInfo) ModTime() time.Time {
+fmt.Fprintf(os.Stderr, "ModTime: %v", r.modTime)
+	return r.modTime
+}
+
+func (r gfsFileInfo) IsDir() bool {
+fmt.Fprintf(os.Stderr, "isDir: %v", r.isDir)
+	return r.isDir
+}
+
+func (r gfsFileInfo) Sys() interface{} {
+	return nil
+}
+
+func (r gfsFileInfo) String() string {
+	return fmt.Sprintf("<gfsFileInfo name: %q  size: %d  mode: %v modTime: %v  isDir: %v>", r.name, r.size, r.mode, r.modTime, r.isDir)
 }

@@ -590,6 +590,7 @@ func (n *gfarmObjects) PutObject(ctx context.Context, bucket string, object stri
 }
 
 func (n *gfarmObjects) NewMultipartUpload(ctx context.Context, bucket string, object string, opts minio.ObjectOptions) (uploadID string, err error) {
+fmt.Fprintf(os.Stderr, "@@@ NewMultipartUpload %q %q\n", bucket, object)
 	_, err = n.clnt.Stat(minio.PathJoin(gfarmSeparator, bucket))
 	if err != nil {
 		return uploadID, gfarmToObjectErr(ctx, err, bucket)
@@ -604,6 +605,7 @@ func (n *gfarmObjects) NewMultipartUpload(ctx context.Context, bucket string, ob
 }
 
 func (n *gfarmObjects) ListMultipartUploads(ctx context.Context, bucket string, prefix string, keyMarker string, uploadIDMarker string, delimiter string, maxUploads int) (lmi minio.ListMultipartsInfo, err error) {
+fmt.Fprintf(os.Stderr, "@@@ ListMultipartUploads %q %q\n", bucket, prefix)
 	_, err = n.clnt.Stat(minio.PathJoin(gfarmSeparator, bucket))
 	if err != nil {
 		return lmi, gfarmToObjectErr(ctx, err, bucket)
@@ -666,6 +668,7 @@ func (n *gfarmObjects) PutObjectPart(ctx context.Context, bucket, object, upload
 }
 
 func (n *gfarmObjects) CompleteMultipartUpload(ctx context.Context, bucket, object, uploadID string, parts []minio.CompletePart, opts minio.ObjectOptions) (objInfo minio.ObjectInfo, err error) {
+fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload %q %q\n", bucket, object)
 	_, err = n.clnt.Stat(minio.PathJoin(gfarmSeparator, bucket))
 	if err != nil {
 		return objInfo, gfarmToObjectErr(ctx, err, bucket)
@@ -721,6 +724,7 @@ func (n *gfarmObjects) CompleteMultipartUpload(ctx context.Context, bucket, obje
 }
 
 func (n *gfarmObjects) AbortMultipartUpload(ctx context.Context, bucket, object, uploadID string) (err error) {
+fmt.Fprintf(os.Stderr, "@@@ AbortMultipartUpload %q %q\n", bucket, object)
 	_, err = n.clnt.Stat(minio.PathJoin(gfarmSeparator, bucket))
 	if err != nil {
 		return gfarmToObjectErr(ctx, err, bucket)
