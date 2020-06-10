@@ -28,8 +28,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-//	"os"
-//	"fmt"
+	"os"
+	"fmt"
 
 	"time"
 
@@ -1932,6 +1932,8 @@ func (api objectAPIHandlers) CopyObjectPartHandler(w http.ResponseWriter, r *htt
 // PutObjectPartHandler - uploads an incoming part for an ongoing multipart operation.
 func (api objectAPIHandlers) PutObjectPartHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := newContext(r, w, "PutObjectPart")
+fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ PutObjectPartHandler r: %v\n", r)
+defer fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ PutObjectPartHandler EXIT\n")
 
 	defer logger.AuditLog(w, r, "PutObjectPart", mustGetClaimsFromToken(r))
 
@@ -2168,7 +2170,9 @@ func (api objectAPIHandlers) PutObjectPartHandler(w http.ResponseWriter, r *http
 
 	putObjectPart := objectAPI.PutObjectPart
 
+fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ putObjectPart CALL\n")
 	partInfo, err := putObjectPart(ctx, bucket, object, uploadID, partID, pReader, opts)
+fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ putObjectPart RETURN\n")
 	if err != nil {
 		// Verify if the underlying error is signature mismatch.
 		writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL, guessIsBrowserReq(r))
@@ -2513,6 +2517,7 @@ func (api objectAPIHandlers) CompleteMultipartUploadHandler(w http.ResponseWrite
 	w.Header().Set(xhttp.ContentType, "text/event-stream")
 	w = &whiteSpaceWriter{ResponseWriter: w, Flusher: w.(http.Flusher)}
 	completeDoneCh := sendWhiteSpace(w)
+fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ completeMultiPartUpload\n")
 	objInfo, err := completeMultiPartUpload(ctx, bucket, object, uploadID, completeParts, opts)
 	// Stop writing white spaces to the client. Note that close(doneCh) style is not used as it
 	// can cause white space to be written after we send XML response in a race condition.

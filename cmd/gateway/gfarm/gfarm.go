@@ -1,17 +1,46 @@
 package gfarm
 
-// #cgo CFLAGS: -g -Wall -I/usr/local/include 
+// #cgo CFLAGS: -g -Wall -I/usr/local/include
 // #cgo LDFLAGS: -L/usr/local/lib -lgfarm -Wl,-rpath,/usr/local/lib
 // #include <stdlib.h>
 // #include <gfarm/gfarm.h>
 // inline int gfarm_s_isdir(gfarm_mode_t m) { return GFARM_S_ISDIR(m); }
 import "C"
 
+/*
+os を、gf におきかえると、さくっといれかわるようにする
+
+	type os.File
+	type os.FileInfo
+	type os.FileMode
+	os.Stat(string)
+	os.OpenFile(string, os.O_RDONLY, mode_t)
+	os.OpenFile(string, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode_t)
+	os.File.Close()
+	os.File.ReadAt([]byte, int64)
+	os.File.Read([]byte)
+	os.File.Write([]byte)
+XXX os.File.Readdir(int) []os.FileInfo
+	os.Rename(string, string)
+	os.Remove(string)
+	os.RemoveAll(string)
+	os.Mkdir(string, mode_t)
+	os.MkdirAll(string, mode_t)
+	ioutil.ReadDir(string) []os.FileInfo
+
+	os.FileInfo.Name()
+	os.FileInfo.Size()
+	os.FileInfo.Mode()
+	os.FileInfo.ModTime()
+	os.FileInfo.IsDir()
+	os.FileInfo.AccessTime()
+*/
+
 import (
 	"os"
 	"time"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"unsafe"
 )
 
@@ -19,48 +48,129 @@ type Client struct {
 	opts ClientOptions
 }
 
-type FileReadWriter struct {
-	f *os.File
+type ClientOptions struct {
+	User string
+	Rootdir string
 }
 
-type FsInfo struct {
-	Used uint64
+type FileReadWriter struct {
+	f *os.File
 }
 
 type FileInfo struct {
 	i os.FileInfo
 }
 
-type ClientOptions struct {
-	User string
-	Rootdir string
+type FsInfo struct {
+	Used uint64
+}
+
+type GfarmError struct {
+	code int
 }
 
 func ClientOptionsFromConf() ClientOptions {
 	return ClientOptions{"", "/mnt/data/nas1"}
 }
 
+func (e *GfarmError) Error() string {
+	return fmt.Sprintf("error code: %d", e.code)
+}
+
 func NewClient(o ClientOptions) (*Client, error) {
-fmt.Fprintf(os.Stderr, "@@@ NewClient %v\n", o)
+//fmt.Fprintf(os.Stderr, "@@@ NewClient %v\n", o)
 	var c *Client
+//fmt.Fprintf(os.Stderr, "@@@ gfarm_initialize()\n")
+	err := gfarm_initialize()
+	if err != nil {
+//fmt.Fprintf(os.Stderr, "@@@ gfarm_initialize() => %v\n", err)
+		return nil, err
+	}
 	c = &Client{o}
 	return c, nil
 }
 
+func (clnt *Client) Close() error {
+//fmt.Fprintf(os.Stderr, "@@@ Close\n")
+//fmt.Fprintf(os.Stderr, "@@@ gfarm_terminate()\n")
+	gfarm_terminate()
+	return nil
+}
+
+func (clnt *Client) Stat(path string) (FileInfo, error) {
+//fmt.Fprintf(os.Stderr, "@@@ Stat %q\n", path)
+	v, err := os.Stat(clnt.opts.Rootdir + path)
+//fmt.Fprintf(os.Stderr, "@@@ Stat %v\n", v)
+	if err != nil { return FileInfo{}, err }
+	return FileInfo{v}, err
+}
+
+func (clnt *Client) Open(path string) (*FileReadWriter, error) {
+//fmt.Fprintf(os.Stderr, "@@@ Open %q\n", path)
+	var r *FileReadWriter
+	f, err := os.OpenFile(clnt.opts.Rootdir + path, os.O_RDONLY, 0666)
+	if err != nil { return nil, err }
+	r = &FileReadWriter{f}
+	return r, nil
+}
+
+func (clnt *Client) Create(path string) (*FileReadWriter, error) {
+//fmt.Fprintf(os.Stderr, "@@@ Create %q\n", path)
+	var w *FileReadWriter
+	f, err := os.OpenFile(clnt.opts.Rootdir + path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
+	if err != nil { return nil, err }
+	w = &FileReadWriter{f}
+	return w, nil
+}
+
+func (clnt *Client) Append(path string) (*FileReadWriter, error) {
+//fmt.Fprintf(os.Stderr, "@@@ Append %q\n", path)
+//@	var w *FileReadWriter
+	//f, err := os.OpenFile(clnt.opts.Rootdir + path, os.O_WRONLY|os.O_APPEND, 0666)
+	w, err := clnt.Create(path)
+//@	f, err := os.OpenFile(clnt.opts.Rootdir + path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
+//@	if err != nil { return nil, err }
+//@	w = &FileReadWriter{f}
+//fmt.Fprintf(os.Stderr, "@@@ Append => %v\n", w)
+	return w, err
+}
+
+func (f *FileReadWriter) Close() (error) {
+//fmt.Fprintf(os.Stderr, "@@@ Close\n")
+//fmt.Fprintf(os.Stderr, "@@@ Close => %v\n", f)
+	return f.f.Close()
+}
+
+/*
+@func (clnt *Client) CreateEmptyFile(path string) error {
+@fmt.Fprintf(os.Stderr, "@@@ CreateEmptyFile %q\n", path)
+@	f, err := clnt.Create(path)
+@	if err != nil { return err }
+@	f.Close()
+@	return nil
+@}
+*/
+
 func (r *FileReadWriter) ReadAt(p []byte, off int64) (int, error) {
 	n, e := r.f.ReadAt(p, off)
-fmt.Fprintf(os.Stderr, "@@@ ReadAt(%d) => %v %v %v  ", off, n, e)
+//fmt.Fprintf(os.Stderr, "@@@ ReadAt(%d) => %d %v  ", off, n, e)
+	return n, e
+}
+
+func (r *FileReadWriter) Read(p []byte) (int, error) {
+	n, e := r.f.Read(p)
+//fmt.Fprintf(os.Stderr, "@@@ Read() => %d %v  ", n, e)
 	return n, e
 }
 
 func (w *FileReadWriter) Write(p []byte) (int, error) {
 	n, e := w.f.Write(p)
-fmt.Fprintf(os.Stderr, "@@@ Write => %d %v  ", n, e)
+//fmt.Fprintf(os.Stderr, "@@@ Write => %d %v  ", n, e)
 	return n, e
 }
 
 func (clnt *Client) Rename(from, to string) error {
-fmt.Fprintf(os.Stderr, "@@@ Rename %q %q\n", from, to)
+//fmt.Fprintf(os.Stderr, "@@@ Rename %q %q\n", from, to)
 	return os.Rename(clnt.opts.Rootdir + from, clnt.opts.Rootdir + to)
 	return nil
 }
@@ -70,32 +180,38 @@ fmt.Fprintf(os.Stderr, "@@@ Remove %q\n", path)
 	return os.Remove(clnt.opts.Rootdir + path)
 }
 
+func (clnt *Client) RemoveAll(path string) error {
+fmt.Fprintf(os.Stderr, "@@@ RemoveAll %q\n", path)
+	return os.RemoveAll(clnt.opts.Rootdir + path)
+}
+
 func (clnt *Client) Mkdir(path string, mode os.FileMode) error {
-fmt.Fprintf(os.Stderr, "@@@ Mkdir %q %v\n", path, mode)
+//fmt.Fprintf(os.Stderr, "@@@ Mkdir %q %v\n", path, mode)
 	return os.Mkdir(clnt.opts.Rootdir + path, mode)
 }
 
 func (clnt *Client) MkdirAll(path string, mode os.FileMode) error {
-fmt.Fprintf(os.Stderr, "@@@ MkdirAll %q %v\n", path, mode)
+//fmt.Fprintf(os.Stderr, "@@@ MkdirAll %q %v\n", path, mode)
 	return os.MkdirAll(clnt.opts.Rootdir + path, mode)
 }
 
-func (clnt *Client) ReadDir(sep string) ([]FileInfo, error) {
-fmt.Fprintf(os.Stderr, "@@@ ReadDir %q\n", sep)
-	f, err := os.OpenFile(clnt.opts.Rootdir, os.O_RDONLY, 0755)
+func (clnt *Client) ReadDir(path string) ([]FileInfo, error) {
+fmt.Fprintf(os.Stderr, "@@@ ReadDir %q\n", path)
+//	f, err := os.OpenFile(clnt.opts.Rootdir + path, os.O_RDONLY, 0755)
+//	if err != nil { return nil, err }
+//	g := FileReadWriter{f}
+//	defer g.Close()
+//	return g.Readdir(0)
+fmt.Fprintf(os.Stderr, "@@@ ReadDir %q\n", path)
+	v, err := ioutil.ReadDir(path)
+fmt.Fprintf(os.Stderr, "@@@ ReadDir => %v\n", v)
 	if err != nil { return nil, err }
-	g := FileReadWriter{f}
-	defer g.Close()
-	return g.Readdir(0)
-}
-
-func (clnt *Client) Open(path string) (*FileReadWriter, error) {
-fmt.Fprintf(os.Stderr, "@@@ Open %q\n", path)
-	var r *FileReadWriter
-	f, err := os.OpenFile(clnt.opts.Rootdir + path, os.O_RDONLY, 0666)
-	if err != nil { return nil, err }
-	r = &FileReadWriter{f}
-	return r, nil
+	var r []FileInfo
+	for _, s := range v {
+		r = append(r, FileInfo{s})
+	}
+fmt.Fprintf(os.Stderr, "@@@ Readdir => %v\n", r)
+	return r, err
 }
 
 func (f *FileReadWriter) Readdir(n int) ([]FileInfo, error) {
@@ -111,86 +227,43 @@ fmt.Fprintf(os.Stderr, "@@@ Readdir => %v\n", r)
 	return r, err
 }
 
-func (f *FileReadWriter) Close() (error) {
-fmt.Fprintf(os.Stderr, "@@@ Close\n")
-	return f.f.Close()
-}
-
-func (clnt *Client) Create(path string) (*FileReadWriter, error) {
-fmt.Fprintf(os.Stderr, "@@@ Create %q\n", path)
-	var w *FileReadWriter
-	f, err := os.OpenFile(clnt.opts.Rootdir + path, os.O_WRONLY|os.O_CREATE, 0666)
-	if err != nil { return nil, err }
-	w = &FileReadWriter{f}
-	return w, nil
-}
-
-func (clnt *Client) Close() error {
-fmt.Fprintf(os.Stderr, "@@@ Close\n")
-	return nil
-}
-
-func (clnt *Client) CreateEmptyFile(path string) error {
-fmt.Fprintf(os.Stderr, "@@@ CreateEmptyFile %q\n", path)
-	f, err := clnt.Create(path)
-	if err != nil { return err }
-	f.Close()
-	return nil
-}
-
-func (clnt *Client) Append(path string) (*FileReadWriter, error) {
-fmt.Fprintf(os.Stderr, "@@@ Append %q\n", path)
-	var w *FileReadWriter
-	f, err := os.OpenFile(clnt.opts.Rootdir + path, os.O_WRONLY|os.O_APPEND, 0666)
-	if err != nil { return nil, err }
-	w = &FileReadWriter{f}
-	return w, nil
-}
-
-func (clnt *Client) Stat(path string) (FileInfo, error) {
-fmt.Fprintf(os.Stderr, "@@@ Stat %q\n", path)
-	v, err := os.Stat(clnt.opts.Rootdir + path)
-fmt.Fprintf(os.Stderr, "@@@ Stat %v\n", v)
-	if err != nil { return FileInfo{}, err }
-	return FileInfo{v}, err
-}
-
-func (clnt *Client) StatFs() (FsInfo, error) {
-fmt.Fprintf(os.Stderr, "@@@ StatFs %q\n")
-	return FsInfo{0}, nil
-}
-
 func (fi *FileInfo) Name() string {
-fmt.Fprintf(os.Stderr, "@@@ Name: %q\n", fi.i.Name())
+//fmt.Fprintf(os.Stderr, "@@@ Name: %q\n", fi.i.Name())
 	return fi.i.Name()
 }
 
 func (fi *FileInfo) Size() int64 {
-fmt.Fprintf(os.Stderr, "@@@ Size: %d\n", fi.i.Size())
+//fmt.Fprintf(os.Stderr, "@@@ Size: %d\n", fi.i.Size())
 	return fi.i.Size()
 }
 
 func (fi *FileInfo) Mode() os.FileMode {
-fmt.Fprintf(os.Stderr, "@@@ Mode: %v\n", fi.i.Mode())
+//fmt.Fprintf(os.Stderr, "@@@ Mode: %v\n", fi.i.Mode())
 	return fi.i.Mode()
 }
 
 func (fi *FileInfo) ModTime() time.Time {
-fmt.Fprintf(os.Stderr, "@@@ ModTime: %v\n", fi.i.ModTime())
+//fmt.Fprintf(os.Stderr, "@@@ ModTime: %v\n", fi.i.ModTime())
 	return fi.i.ModTime()
 }
 
 func (fi *FileInfo) IsDir() bool {
-fmt.Fprintf(os.Stderr, "@@@ IsDir: %v\n", fi.i.IsDir())
+//fmt.Fprintf(os.Stderr, "@@@ IsDir: %v\n", fi.i.IsDir())
 	return fi.i.IsDir()
 }
 
 func (fi *FileInfo) AccessTime() time.Time {
-fmt.Fprintf(os.Stderr, "@@@ AccessTime: %v\n", fi.i.ModTime())
+//fmt.Fprintf(os.Stderr, "@@@ AccessTime: %v\n", fi.i.ModTime())
 	return fi.i.ModTime()
 }
 
+func (clnt *Client) StatFs() (FsInfo, error) {
+//fmt.Fprintf(os.Stderr, "@@@ StatFs %q\n")
+	return FsInfo{0}, nil
+}
 
+
+/*
 func tst_write_to_gfarm(filePath string, reader io.Reader, buf []byte, fallocSize int64) (int64, error) {
 fmt.Fprintf(os.Stderr, "@@@: TST_WRITE_TO_GFARM => gfreg_d => gfreg_main\n")
 
@@ -288,12 +361,15 @@ fmt.Fprintf(os.Stderr, "##################### GFEXPORT ##################\n")
 	C.gfs_pio_recvfile(gf, 0, C.int(d), 0, size, (*C.long)(C.NULL))
 	C.gfs_pio_close(gf)
 }
+*/
 
-func gfarm_initialize() {
+func gfarm_initialize() error {
 	e := C.gfarm_initialize((*C.int)(C.NULL), (***C.char)(C.NULL))
 	if e != C.GFARM_ERR_NO_ERROR {
+		return &GfarmError{1}
 		fmt.Fprintf(os.Stderr, "%s\n", C.gfarm_error_string(C.int(e)))
 	}
+	return nil
 }
 
 func gfarm_terminate() {
