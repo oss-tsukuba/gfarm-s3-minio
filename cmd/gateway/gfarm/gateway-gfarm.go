@@ -567,8 +567,11 @@ fmt.Fprintf(os.Stderr, "@@@ GetObjectInfo %q %q\n", bucket, object)
 }
 
 func (n *gfarmObjects) PutObject(ctx context.Context, bucket string, object string, r *minio.PutObjReader, opts minio.ObjectOptions) (objInfo minio.ObjectInfo, err error) {
+fmt.Fprintf(os.Stderr, "@@@: PutObject: ENTER %q %q\n", bucket, object)
+defer fmt.Fprintf(os.Stderr, "@@@: PutObject: EXIT %q %q\n", bucket, object)
 	_, err = n.clnt.Stat(minio.PathJoin(gfarmSeparator, bucket))
 	if err != nil {
+defer fmt.Fprintf(os.Stderr, "@@@: PutObject: ERROR 1\n")
 		return objInfo, gfarmToObjectErr(ctx, err, bucket)
 	}
 
@@ -578,6 +581,7 @@ func (n *gfarmObjects) PutObject(ctx context.Context, bucket string, object stri
 	if strings.HasSuffix(object, gfarmSeparator) && r.Size() == 0 {
 		if err = n.clnt.MkdirAll(name, os.FileMode(0755)); err != nil {
 			n.deleteObject(minio.PathJoin(gfarmSeparator, bucket), name)
+defer fmt.Fprintf(os.Stderr, "@@@: PutObject: ERROR 2\n")
 			return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 		}
 	} else {
@@ -585,11 +589,13 @@ func (n *gfarmObjects) PutObject(ctx context.Context, bucket string, object stri
 		var w *FileReadWriter
 		w, err = n.clnt.Create(tmpname)
 		if err != nil {
+defer fmt.Fprintf(os.Stderr, "@@@: PutObject: ERROR 3\n")
 			return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 		}
 		defer n.deleteObject(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket), tmpname)
 		if _, err = io.Copy(w, r); err != nil {
 			w.Close()
+defer fmt.Fprintf(os.Stderr, "@@@: PutObject: ERROR 4\n")
 			return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 		}
 		dir := path.Dir(name)
@@ -597,18 +603,22 @@ func (n *gfarmObjects) PutObject(ctx context.Context, bucket string, object stri
 			if err = n.clnt.MkdirAll(dir, os.FileMode(0755)); err != nil {
 				w.Close()
 				n.deleteObject(minio.PathJoin(gfarmSeparator, bucket), dir)
+defer fmt.Fprintf(os.Stderr, "@@@: PutObject: ERROR 5\n")
 				return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 			}
 		}
 		w.Close()
 		if err = n.clnt.Rename(tmpname, name); err != nil {
+defer fmt.Fprintf(os.Stderr, "@@@: PutObject: ERROR 6\n")
 			return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 		}
 	}
 	fi, err := n.clnt.Stat(name)
 	if err != nil {
+defer fmt.Fprintf(os.Stderr, "@@@: PutObject: ERROR 7\n")
 		return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 	}
+defer fmt.Fprintf(os.Stderr, "@@@: PutObject: SUCCESS\n")
 	return minio.ObjectInfo{
 		Bucket:  bucket,
 		Name:    object,
@@ -680,6 +690,7 @@ func (n *gfarmObjects) PutObjectPart(ctx context.Context, bucket, object, upload
 fmt.Fprintf(os.Stderr, "@@@ PutObjectPart bucket:%q object:%q uploadID:%q partID:%d\n", bucket, object, uploadID, partID)
 	_, err = n.clnt.Stat(minio.PathJoin(gfarmSeparator, bucket))
 	if err != nil {
+fmt.Fprintf(os.Stderr, "@@@ PutObjectPart: FAIL %v\n", err)
 		return info, gfarmToObjectErr(ctx, err, bucket)
 	}
 

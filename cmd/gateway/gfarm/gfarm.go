@@ -525,7 +525,7 @@ type gfError struct {
 
 func (e gfError) Error() string {
 	errmsg := C.gfarm_error_string(C.int(e.code))
-	defer C.free(unsafe.Pointer(errmsg))
+	//defer C.free(unsafe.Pointer(errmsg))
 	return fmt.Sprintf("error code: %d %s", e.code, C.GoString(errmsg))
 }
 
@@ -549,10 +549,10 @@ fmt.Fprintf(os.Stderr, "@@@ gfStat: %q\n", path)
 	var sb C.struct_gfs_stat
 
 	cpath := C.CString(path)
-	defer C.free(unsafe.Pointer(cpath))
+	//defer C.free(unsafe.Pointer(cpath))
 	e := C.gfs_stat(cpath, (*C.struct_gfs_stat)(unsafe.Pointer(&sb)))
 	if e != C.GFARM_ERR_NO_ERROR { return gfFileInfo{}, &gfError{(int)(e)} }
-	defer C.gfs_stat_free((*C.struct_gfs_stat)(unsafe.Pointer(&sb)))
+	//defer C.gfs_stat_free((*C.struct_gfs_stat)(unsafe.Pointer(&sb)))
 
 	r = gfFileInfo{
 		path,
@@ -576,7 +576,7 @@ func gfOpenFile(path string) (*gfFile, error) {
 fmt.Fprintf(os.Stderr, "@@@ gfOpenFile: %q\n", path)
 	var gf C.GFS_File
 	gfarm_url := C.CString(path)
-	defer C.free(unsafe.Pointer(gfarm_url))
+	//defer C.free(unsafe.Pointer(gfarm_url))
 	e := C.gfs_pio_open(gfarm_url, C.GFARM_FILE_RDONLY, (*C.GFS_File)(unsafe.Pointer(&gf)))
 	if e != C.GFARM_ERR_NO_ERROR { return nil, &gfError{(int)(e)} }
 	return &gfFile{gf}, nil
@@ -586,7 +586,7 @@ func gfCreateFile(path string, mode os.FileMode) (*gfFile, error) {
 fmt.Fprintf(os.Stderr, "@@@ gfCreateFile: %q\n", path)
 	var gf C.GFS_File
 	gfarm_url := C.CString(path)
-	defer C.free(unsafe.Pointer(gfarm_url))
+	//defer C.free(unsafe.Pointer(gfarm_url))
 	e := C.gfs_pio_create(gfarm_url, C.GFARM_FILE_WRONLY | C.GFARM_FILE_TRUNC, (C.gfarm_mode_t)(mode), (*C.GFS_File)(unsafe.Pointer(&gf)))
 	if e != C.GFARM_ERR_NO_ERROR { return nil, &gfError{(int)(e)} }
 	return &gfFile{gf}, nil
@@ -618,17 +618,20 @@ fmt.Fprintf(os.Stderr, "@@@ gfRead\n")
 func (f *gfFile) gfWrite(b []byte) (int, error) {
 fmt.Fprintf(os.Stderr, "@@@ gfWrite\n")
 	var n C.int
+fmt.Fprintf(os.Stderr, "@@@ gfWrite gfs_pio_write %v %v %v %v\n", f.gf, unsafe.Pointer(&b[0]), C.int(len(b)), (*C.int)(unsafe.Pointer(&n)))
 	e := C.gfs_pio_write(f.gf, unsafe.Pointer(&b[0]), C.int(len(b)), (*C.int)(unsafe.Pointer(&n)))
-	if e != C.GFARM_ERR_NO_ERROR { return 0, &gfError{(int)(e)} }
+	if e != C.GFARM_ERR_NO_ERROR { 
+fmt.Fprintf(os.Stderr, "@@@ gfWrite ERROR %d\n", (int)(e))
+		return 0, &gfError{(int)(e)} }
 	return (int)(n), nil
 }
 
 func gfRename(from, to string) error {
 fmt.Fprintf(os.Stderr, "@@@ gfRename: %q %q\n", from, to)
 	src := C.CString(from)
-	defer C.free(unsafe.Pointer(src))
+	//defer C.free(unsafe.Pointer(src))
 	dst := C.CString(to)
-	defer C.free(unsafe.Pointer(dst))
+	//defer C.free(unsafe.Pointer(dst))
 	e := C.gfs_rename(src, dst)
 	if e != C.GFARM_ERR_NO_ERROR { return &gfError{(int)(e)} }
 	return nil
@@ -649,7 +652,8 @@ fmt.Fprintf(os.Stderr, "@@@ gfMkdir: %q\n", path)
 	cpath := C.CString(path)
 //	defer C.free(unsafe.Pointer(cpath))
 	e := C.gfs_mkdir((*C.char)(cpath), (C.gfarm_mode_t)(mode))
-	if e != C.GFARM_ERR_NO_ERROR { return &gfError{(int)(e)} }
+	//if e != C.GFARM_ERR_NO_ERROR { return &gfError{(int)(e)} }
+	if e != C.GFARM_ERR_NO_ERROR { return nil }
 	return nil
 }
 
@@ -658,16 +662,20 @@ fmt.Fprintf(os.Stderr, "@@@ gfMkdirAll: %q\n", path)
 defer fmt.Fprintf(os.Stderr, "@@@ gfMkdirAll Exit\n")
 	cpath := C.CString(path)
 //	defer C.free(unsafe.Pointer(cpath))
-	return gf_mkdir_p(cpath, mode, 0)
+	err := gf_mkdir_p(cpath, mode, 0)
+	//if err != nil { return &gfError{(int)(e)} }
+	if err != nil { return nil }
+	return nil
 }
 
 func gf_mkdir_p(cpath *C.char, mode os.FileMode, lv int) error {
+fmt.Fprintf(os.Stderr, "@@@: gf_mkdir_p: ENTER %d %q\n", lv, C.GoString(cpath))
+defer fmt.Fprintf(os.Stderr, "@@@: gf_mkdir_p: EXIT %d\n", lv)
 	var sb C.struct_gfs_stat
 	parent := C.gfarm_url_dir((*C.char)(cpath))
 //	defer C.free(unsafe.Pointer(&parent))
 
-fmt.Fprintf(os.Stderr, "@@@: gf_mkdir_p: ENTER %d %q => %q\n", lv, C.GoString(cpath), C.GoString(parent))
-defer fmt.Fprintf(os.Stderr, "@@@: gf_mkdir_p: EXIT %d\n", lv)
+fmt.Fprintf(os.Stderr, "@@@: gf_mkdir_p: parent = %q\n", C.GoString(parent))
 //	fmt.Fprintf(os.Stderr, "@@@: gf_mkdir_p: @@@ @@@ @@@ 0\n")
 	e := C.gfs_stat(parent, (*C.struct_gfs_stat)(unsafe.Pointer(&sb)))
 //fmt.Fprintf(os.Stderr, "@@@: gf_mkdir_p: @@@ @@@ @@@ A\n")
@@ -676,10 +684,10 @@ defer fmt.Fprintf(os.Stderr, "@@@: gf_mkdir_p: EXIT %d\n", lv)
 //		defer C.gfs_stat_free((*C.struct_gfs_stat)(unsafe.Pointer(&sb)))
 //fmt.Fprintf(os.Stderr, "@@@: gf_mkdir_p: @@@ @@@ @@@ C\n")
 		if C.gfarm_s_isdir((C.gfarm_mode_t)(sb.st_mode)) != C.int(0) {
-			fmt.Fprintf(os.Stderr, "@@@ %q: exists\n", C.GoString(parent))
-			return nil
+			fmt.Fprintf(os.Stderr, "@@@ gf_mkdir_p: PARENT OK %q: already exists\n", C.GoString(parent))
+			//return nil
 		} else {
-			fmt.Fprintf(os.Stderr, "@@@ gf_mkdir_p: %q: not a directory\n", C.GoString(parent))
+			fmt.Fprintf(os.Stderr, "@@@ gf_mkdir_p: FAIL PARENT IS NOT A DIRECTORY %q: not a directory\n", C.GoString(parent))
 			return &gfError{1}
 		}
 	} else if e == C.GFARM_ERR_NO_SUCH_FILE_OR_DIRECTORY {
@@ -689,21 +697,22 @@ defer fmt.Fprintf(os.Stderr, "@@@: gf_mkdir_p: EXIT %d\n", lv)
 //			fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ gf_mkdir_p: %q %s\n", C.GoString(parent), C.gfarm_error_string(C.int(e)))
 			return err
 		}
-//fmt.Fprintf(os.Stderr, "@@@: gfs_mkdir: @@@ @@@ @@@ DDD %s\n", C.GoString(parent))
-fmt.Fprintf(os.Stderr, "@@@: gfs_mkdir: %q\n", C.GoString(parent))
-		e = C.gfs_mkdir((*C.char)(parent), (C.gfarm_mode_t)(mode))
-		if e != C.GFARM_ERR_NO_ERROR {
-			//fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ gf_mkdir_p: %q %s\n", C.GoString(parent), C.gfarm_error_string(C.int(e)))
-			fmt.Fprintf(os.Stderr, "@@@ gf_mkdir_p: %q MKDIR FAILED\n", C.GoString(parent))
-			return &gfError{(int)(e)}
-		}
-		return nil
 	}
+//fmt.Fprintf(os.Stderr, "@@@: gfs_mkdir: @@@ @@@ @@@ DDD %s\n", C.GoString(parent))
+fmt.Fprintf(os.Stderr, "@@@: gfs_mkdir: %q\n", C.GoString(cpath))
+	e = C.gfs_mkdir((*C.char)(cpath), (C.gfarm_mode_t)(mode))
+	if e != C.GFARM_ERR_NO_ERROR {
+		//fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ gf_mkdir_p: %q %s\n", C.GoString(cpath), C.gfarm_error_string(C.int(e)))
+		fmt.Fprintf(os.Stderr, "@@@ gf_mkdir_p: FAIL %q gfs_mkdir failed\n", C.GoString(cpath))
+		return &gfError{(int)(e)}
+	}
+	fmt.Fprintf(os.Stderr, "@@@ gf_mkdir_p: SUCCESS %q gfs_mkdir succeeded\n", C.GoString(cpath))
+	return nil
 //fmt.Fprintf(os.Stderr, "@@@: gf_mkdir_p: @@@ @@@ @@@ E\n")
 
 	//fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ gf_mkdir_p: %q %s\n", C.GoString(parent), C.gfarm_error_string(C.int(e)))
-	fmt.Fprintf(os.Stderr, "@@@ gf_mkdir_p: %q UNKNOWN ERROR\n", C.GoString(parent))
-	return &gfError{1}
+	//fmt.Fprintf(os.Stderr, "@@@ gf_mkdir_p: FAIL %q UNKNOWN ERROR\n", C.GoString(parent))
+	//return &gfError{1}
 }
 
 func gfReadDir(path string) ([]gfFileInfo, error) {
@@ -733,27 +742,22 @@ fmt.Fprintf(os.Stderr, "@@@ gfReadir: %q\n", path)
 }
 
 func (r gfFileInfo) Name() string {
-//fmt.Fprintf(os.Stderr, "Name: %q", r.name)
 	return r.name
 }
 
 func (r gfFileInfo) Size() int64 {
-//fmt.Fprintf(os.Stderr, "Size: %d", r.size)
 	return r.size
 }
 
 func (r gfFileInfo) Mode() os.FileMode {
-//fmt.Fprintf(os.Stderr, "Mode: %v", r.mode)
 	return r.mode
 }
 
 func (r gfFileInfo) ModTime() time.Time {
-//fmt.Fprintf(os.Stderr, "ModTime: %v", r.modTime)
 	return r.modTime
 }
 
 func (r gfFileInfo) IsDir() bool {
-//fmt.Fprintf(os.Stderr, "isDir: %v", r.isDir)
 	return r.isDir
 }
 
@@ -762,7 +766,7 @@ func (r gfFileInfo) Sys() interface{} {
 }
 
 func (r gfFileInfo) String() string {
-	return fmt.Sprintf("<gfFileInfo name: %q  size: %d  mode: %v modTime: %v  isDir: %v>", r.name, r.size, r.mode, r.modTime, r.isDir)
+	return fmt.Sprintf("#{gfFileInfo name: %q  size: %d  mode: %v modTime: %v  isDir: %v}", r.name, r.size, r.mode, r.modTime, r.isDir)
 }
 
 
