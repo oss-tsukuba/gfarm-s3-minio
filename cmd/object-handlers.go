@@ -28,8 +28,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"os"
-	"fmt"
 
 	"time"
 
@@ -258,14 +256,11 @@ func (api objectAPIHandlers) SelectObjectContentHandler(w http.ResponseWriter, r
 // This implementation of the GET operation retrieves object. To use GET,
 // you must have READ access to the object.
 func (api objectAPIHandlers) GetObjectHandler(w http.ResponseWriter, r *http.Request) {
-//fmt.Fprintf(os.Stderr, "@@@ GetObjectHandler...\n")
 	ctx := newContext(r, w, "GetObject")
 
 	defer logger.AuditLog(w, r, "GetObject", mustGetClaimsFromToken(r))
 
-//fmt.Fprintf(os.Stderr, "@@@ GetObjectHandler: call api.ObjectAPI\n")
 	objectAPI := api.ObjectAPI()
-//fmt.Fprintf(os.Stderr, "@@@ GetObjectHandler: objectAPI = %T %v\n", objectAPI, objectAPI)
 	if objectAPI == nil {
 		writeErrorResponse(ctx, w, errorCodes.ToAPIErr(ErrServerNotInitialized), r.URL, guessIsBrowserReq(r))
 		return
@@ -1175,13 +1170,10 @@ func (api objectAPIHandlers) CopyObjectHandler(w http.ResponseWriter, r *http.Re
 //   - X-Amz-Server-Side-Encryption-Customer-Key
 //   - X-Amz-Copy-Source-Server-Side-Encryption-Customer-Key
 func (api objectAPIHandlers) PutObjectHandler(w http.ResponseWriter, r *http.Request) {
-//fmt.Fprintf(os.Stderr, "@@@ PutObjectHandler...\n")
 	ctx := newContext(r, w, "PutObject")
 	defer logger.AuditLog(w, r, "PutObject", mustGetClaimsFromToken(r))
 
-//fmt.Fprintf(os.Stderr, "@@@ PetObjectHandler: call api.ObjectAPI\n")
 	objectAPI := api.ObjectAPI()
-//fmt.Fprintf(os.Stderr, "@@@ PetObjectHandler: objectAPI = %T %v\n", objectAPI, objectAPI)
 	if objectAPI == nil {
 		writeErrorResponse(ctx, w, errorCodes.ToAPIErr(ErrServerNotInitialized), r.URL, guessIsBrowserReq(r))
 		return
@@ -1431,11 +1423,7 @@ func (api objectAPIHandlers) PutObjectHandler(w http.ResponseWriter, r *http.Req
 	crypto.RemoveSensitiveEntries(metadata)
 
 	// Create the object..
-//fmt.Fprintf(os.Stderr, "@@@ PetObjectHandler: objectAPI.PutObject = %T %v\n", objectAPI.PutObject, objectAPI.PutObject)
-//fmt.Fprintf(os.Stderr, "@@@ PetObjectHandler: putObject %T %v\n", putObject, putObject)
-//fmt.Fprintf(os.Stderr, "@@@ PetObjectHandler: call putObject\n")
 	objInfo, err := putObject(ctx, bucket, object, pReader, opts)
-//fmt.Fprintf(os.Stderr, "@@@ PetObjectHandler: objInfo = %v\n", objInfo)
 	if err != nil {
 		writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL, guessIsBrowserReq(r))
 		return
@@ -1932,8 +1920,6 @@ func (api objectAPIHandlers) CopyObjectPartHandler(w http.ResponseWriter, r *htt
 // PutObjectPartHandler - uploads an incoming part for an ongoing multipart operation.
 func (api objectAPIHandlers) PutObjectPartHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := newContext(r, w, "PutObjectPart")
-fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ PutObjectPartHandler r: %v\n", r)
-defer fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ PutObjectPartHandler EXIT\n")
 
 	defer logger.AuditLog(w, r, "PutObjectPart", mustGetClaimsFromToken(r))
 
@@ -2170,9 +2156,7 @@ defer fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ PutObjectPartHandler EXIT\n")
 
 	putObjectPart := objectAPI.PutObjectPart
 
-fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ putObjectPart CALL\n")
 	partInfo, err := putObjectPart(ctx, bucket, object, uploadID, partID, pReader, opts)
-fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ putObjectPart RETURN\n")
 	if err != nil {
 		// Verify if the underlying error is signature mismatch.
 		writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL, guessIsBrowserReq(r))
@@ -2517,7 +2501,6 @@ func (api objectAPIHandlers) CompleteMultipartUploadHandler(w http.ResponseWrite
 	w.Header().Set(xhttp.ContentType, "text/event-stream")
 	w = &whiteSpaceWriter{ResponseWriter: w, Flusher: w.(http.Flusher)}
 	completeDoneCh := sendWhiteSpace(w)
-fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ completeMultiPartUpload\n")
 	objInfo, err := completeMultiPartUpload(ctx, bucket, object, uploadID, completeParts, opts)
 	// Stop writing white spaces to the client. Note that close(doneCh) style is not used as it
 	// can cause white space to be written after we send XML response in a race condition.

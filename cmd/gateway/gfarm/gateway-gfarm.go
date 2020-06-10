@@ -345,7 +345,7 @@ func (n *gfarmObjects) listDirFactory() minio.ListDirFunc {
 		}
 		for _, fi := range fis {
 			if fi.IsDir() {
-				entries = append(entries, fi.Name()+gfarmSeparator)
+				entries = append(entries, fi.Name() + gfarmSeparator)
 			} else {
 				entries = append(entries, fi.Name())
 			}
@@ -446,6 +446,7 @@ func (n *gfarmObjects) DeleteObjects(ctx context.Context, bucket string, objects
 }
 
 func (n *gfarmObjects) GetObjectNInfo(ctx context.Context, bucket, object string, rs *minio.HTTPRangeSpec, h http.Header, lockType minio.LockType, opts minio.ObjectOptions) (gr *minio.GetObjectReader, err error) {
+//fmt.Fprintf(os.Stderr, "@@@ GetObjectNInfo %q %q\n", bucket, object)
 	objInfo, err := n.GetObjectInfo(ctx, bucket, object, opts)
 	if err != nil {
 		return nil, err
@@ -471,6 +472,7 @@ func (n *gfarmObjects) GetObjectNInfo(ctx context.Context, bucket, object string
 }
 
 func (n *gfarmObjects) CopyObject(ctx context.Context, srcBucket, srcObject, dstBucket, dstObject string, srcInfo minio.ObjectInfo, srcOpts, dstOpts minio.ObjectOptions) (minio.ObjectInfo, error) {
+//fmt.Fprintf(os.Stderr, "@@@ CopyObject %q %q => %q %q\n", srcBucket, srcObject, dstBucket, dstObject)
 	cpSrcDstSame := minio.IsStringEqual(minio.PathJoin(gfarmSeparator, srcBucket, srcObject), minio.PathJoin(gfarmSeparator, dstBucket, dstObject))
 	if cpSrcDstSame {
 		return n.GetObjectInfo(ctx, srcBucket, srcObject, minio.ObjectOptions{})
@@ -502,18 +504,8 @@ func (n *gfarmObjects) GetObject(ctx context.Context, bucket, key string, startO
 }
 
 func (n *gfarmObjects) isObjectDir(ctx context.Context, bucket, object string) bool {
-//	sb, err := n.clnt.Stat(minio.PathJoin(gfarmSeparator, bucket, object))
-//	if err != nil {
-//		if os.IsNotExist(err) {
-//			return false
-//		}
-//		logger.LogIf(ctx, err)
-//		return false
-//	}
-
 fmt.Fprintf(os.Stderr, "@@@ isObjectDir %q %q\n", bucket, object)
-
-	f, err := n.clnt.Open(minio.PathJoin(gfarmSeparator, bucket, object))
+	fis, err := n.clnt.ReadDir(minio.PathJoin(gfarmSeparator, bucket, object))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return false
@@ -521,30 +513,48 @@ fmt.Fprintf(os.Stderr, "@@@ isObjectDir %q %q\n", bucket, object)
 		logger.LogIf(ctx, err)
 		return false
 	}
-	defer f.Close()
-	fis, err := f.Readdir(1)
-	if err != nil && err != io.EOF {
-		logger.LogIf(ctx, err)
-		return false
-	}
-	// Readdir returns an io.EOF when len(fis) == 0.
 	return len(fis) == 0
+//
+//
+//	f, err := n.clnt.Open(minio.PathJoin(gfarmSeparator, bucket, object))
+//	if err != nil {
+//		if os.IsNotExist(err) {
+//			return false
+//		}
+//		logger.LogIf(ctx, err)
+//		return false
+//	}
+//	defer f.Close()
+//	fis, err := f.Readdir(1)
+//	if err != nil && err != io.EOF {
+//		logger.LogIf(ctx, err)
+//		return false
+//	}
+//	// Readdir returns an io.EOF when len(fis) == 0.
+//	return len(fis) == 0
 }
 
 // GetObjectInfo reads object info and replies back ObjectInfo.
 func (n *gfarmObjects) GetObjectInfo(ctx context.Context, bucket, object string, opts minio.ObjectOptions) (objInfo minio.ObjectInfo, err error) {
+fmt.Fprintf(os.Stderr, "@@@ GetObjectInfo %q %q\n", bucket, object)
 	_, err = n.clnt.Stat(minio.PathJoin(gfarmSeparator, bucket))
 	if err != nil {
+//fmt.Fprintf(os.Stderr, "@@@ GetObjectInfo => %q\n", err.Error())
 		return objInfo, gfarmToObjectErr(ctx, err, bucket)
 	}
+//fmt.Fprintf(os.Stderr, "@@@ HasSuffix %q %q => %v\n", object, gfarmSeparator, strings.HasSuffix(object, gfarmSeparator))
 	if strings.HasSuffix(object, gfarmSeparator) && !n.isObjectDir(ctx, bucket, object) {
+//fmt.Fprintf(os.Stderr, "@@@ GetObjectInfo => NotExist\n")
 		return objInfo, gfarmToObjectErr(ctx, os.ErrNotExist, bucket, object)
 	}
+//fmt.Fprintf(os.Stderr, "@@@ GetObjectInfo stat %q \n", minio.PathJoin(gfarmSeparator, bucket, object))
 
 	fi, err := n.clnt.Stat(minio.PathJoin(gfarmSeparator, bucket, object))
 	if err != nil {
+//fmt.Fprintf(os.Stderr, "@@@ GetObjectInfo stat FAILED\n")
 		return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 	}
+//fmt.Fprintf(os.Stderr, "@@@ GetObjectInfo SUCCESS\n")
 	return minio.ObjectInfo{
 		Bucket:  bucket,
 		Name:    object,
@@ -674,10 +684,10 @@ fmt.Fprintf(os.Stderr, "@@@ PutObjectPart bucket:%q object:%q uploadID:%q partID
 	}
 
 	var w *FileReadWriter
-fmt.Fprintf(os.Stderr, "@@@ Append object:%q uploadID:%q partID:%d\n", object, uploadID, partID)
+fmt.Fprintf(os.Stderr, "@@@ Create object:%q uploadID:%q partID:%d\n", object, uploadID, partID)
 	//w, err = n.clnt.Append(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID))
 	partName := fmt.Sprintf("%05d", partID)
-	w, err = n.clnt.Append(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID, partName))
+	w, err = n.clnt.Create(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID, partName))
 	if err != nil {
 		return info, gfarmToObjectErr(ctx, err, bucket, object, uploadID)
 	}
@@ -717,7 +727,7 @@ fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload bucket:%q object:%q  parts:%
 	//w, err = n.clnt.Append(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID))
 	//w, err = n.clnt.Append(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID))
 	var w *FileReadWriter
-	w, err = n.clnt.Append(name)
+	w, err = n.clnt.Create(name)
 	if os.IsExist(err) {
 		if err = n.clnt.Remove(name); err != nil {
 			if dir != "" {
@@ -725,7 +735,7 @@ fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload bucket:%q object:%q  parts:%
 			}
 			return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 		}
-		w, err = n.clnt.Append(name)
+		w, err = n.clnt.Create(name)
 		if err != nil {
 			if dir != "" {
 				n.deleteObject(minio.PathJoin(gfarmSeparator, bucket), dir)
