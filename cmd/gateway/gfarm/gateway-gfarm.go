@@ -695,7 +695,7 @@ fmt.Fprintf(os.Stderr, "@@@ PutObjectPart: FAIL %v\n", err)
 	}
 
 	var w *FileReadWriter
-fmt.Fprintf(os.Stderr, "@@@ Create object:%q uploadID:%q partID:%d\n", object, uploadID, partID)
+fmt.Fprintf(os.Stderr, "@@@ clnt.Create object: %q uploadID: %q partID: %d\n", object, uploadID, partID)
 	//w, err = n.clnt.Append(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID))
 	partName := fmt.Sprintf("%05d", partID)
 	w, err = n.clnt.Create(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID, partName))
