@@ -738,7 +738,8 @@ fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload bucket:%q object:%q  parts:%
 	//w, err = n.clnt.Append(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID))
 	//w, err = n.clnt.Append(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID))
 	var w *FileReadWriter
-	w, err = n.clnt.Create(name)
+	w, err = n.clnt.Create(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID, "00000"))
+/*
 	if os.IsExist(err) {
 		if err = n.clnt.Remove(name); err != nil {
 			if dir != "" {
@@ -754,12 +755,13 @@ fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload bucket:%q object:%q  parts:%
 			return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 		}
 	}
+*/
 
 	for _, part := range parts {
 		var r *FileReadWriter
 		partName := fmt.Sprintf("%05d", part.PartNumber)
 		r, err = n.clnt.Open(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID, partName))
-fmt.Fprintf(os.Stderr, "@@@ Copy %q => %q\n", minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID, partName), name)
+fmt.Fprintf(os.Stderr, "@@@ Copy %q => %q\n", minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID, partName), minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID, "00000"))
 		if err != nil {
 			return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 		}
@@ -767,10 +769,9 @@ fmt.Fprintf(os.Stderr, "@@@ Copy %q => %q\n", minio.PathJoin(gfarmSeparator, min
 		_, err = io.Copy(w, r)
 	}
 
-	err = n.clnt.RemoveAll(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID))
+	err = n.clnt.Rename(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID, "00000"), name)
 
-	//err = n.clnt.Rename(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID), name)
-	// Object already exists is an error on GFARM
+	//Object already exists is an error on GFARM
 	// remove it and then create it again.
 //	if os.IsExist(err) {
 //		if err = n.clnt.Remove(name); err != nil {
@@ -790,6 +791,8 @@ fmt.Fprintf(os.Stderr, "@@@ Copy %q => %q\n", minio.PathJoin(gfarmSeparator, min
 	if err != nil {
 		return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 	}
+
+	err = n.clnt.RemoveAll(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID))
 
 	// Calculate s3 compatible md5sum for complete multipart.
 	s3MD5 := minio.ComputeCompleteMultipartMD5(parts)
