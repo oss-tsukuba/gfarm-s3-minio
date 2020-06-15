@@ -327,7 +327,9 @@ func (e *GfarmError) Error() string {
 }
 
 func NewClient(o ClientOptions) (*Client, error) {
-//fmt.Fprintf(os.Stderr, "@@@ NewClient %v\n", o)
+fmt.Fprintf(os.Stderr, "@@@ NewClient %v\n", o)
+	key := "GLOBUS_GSSAPI_NAME_COMPATIBILITY"
+fmt.Fprintf(os.Stderr, "@@@ %s = %q\n", key, os.Getenv(key))
 	var c *Client
 	err := gfarm_initialize()
 	if err != nil {
@@ -574,21 +576,34 @@ fmt.Fprintf(os.Stderr, "@@@ gfStat: %q\n", path)
 defer fmt.Fprintf(os.Stderr, "@@@ gfStat EXIT: %q\n", path)
 	var r gfFileInfo
 	var gf C.GFS_File
-	var sb C.struct_gfs_stat
+	var sb0, sb C.struct_gfs_stat
 
 	cpath := C.CString(path)
 	defer C.free(unsafe.Pointer(cpath))
-fmt.Fprintf(os.Stderr, "@@@ gfStat: &sb = %p\n", &sb)
-	err := gfCheckError(C.gfs_pio_open(cpath, C.GFARM_FILE_RDONLY, (*C.GFS_File)(unsafe.Pointer(&gf))))
+//fmt.Fprintf(os.Stderr, "@@@ gfStat: &sb = %p\n", &sb)
+
+	err := gfCheckError(C.gfs_stat(cpath, (*C.struct_gfs_stat)(unsafe.Pointer(&sb0))))
 	if err != nil {
-fmt.Fprintf(os.Stderr, "@@@ gfStat ERROR: %q %v\n", path, err)
+fmt.Fprintf(os.Stderr, "@@@ gfStat gfs_pio_open ERROR: %q %v\n", path, err)
+		return gfFileInfo{}, err
+	}
+	defer C.gfs_stat_free((*C.struct_gfs_stat)(unsafe.Pointer(&sb0)))
+	if (C.gfarm_s_isdir(C.gfarm_mode_t(sb0.st_mode)) != C.int(0)) {
+		r = gfFileInfo{path, int64(sb0.st_size), os.FileMode(sb0.st_mode), time.Unix(int64(sb0.st_mtimespec.tv_sec), int64(sb0.st_mtimespec.tv_nsec)), C.gfarm_s_isdir(C.gfarm_mode_t(sb0.st_mode)) != C.int(0)}
+		fmt.Fprintf(os.Stderr, "@@@ gfStat: %q => %s\n", path, r.String())
+		return r, nil
+	}
+
+	err = gfCheckError(C.gfs_pio_open(cpath, C.GFARM_FILE_RDONLY, (*C.GFS_File)(unsafe.Pointer(&gf))))
+	if err != nil {
+fmt.Fprintf(os.Stderr, "@@@ gfStat gfs_pio_open ERROR: %q %v\n", path, err)
 		return gfFileInfo{}, err
 	}
 	defer C.gfs_pio_close(gf)
 
 	err = gfCheckError(C.gfs_fstat(gf, (*C.struct_gfs_stat)(unsafe.Pointer(&sb))))
 	if err != nil {
-fmt.Fprintf(os.Stderr, "@@@ gfStat ERROR: %q %v\n", path, err)
+fmt.Fprintf(os.Stderr, "@@@ gfStat gfs_fstat ERROR: %q %v\n", path, err)
 		return gfFileInfo{}, err
 	}
 	defer C.gfs_stat_free((*C.struct_gfs_stat)(unsafe.Pointer(&sb)))
