@@ -586,8 +586,9 @@ defer fmt.Fprintf(os.Stderr, "@@@: PutObject: ERROR 2\n")
 		}
 	} else {
 		tmpname := minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, minio.MustGetUUID())
-		var w *FileReadWriter
-		w, err = n.clnt.Create(tmpname)
+//XXX このファイルに、FileReadWriter, FileReadWriter2 というかためいを、かきたくない
+		//var w *FileReadWriter
+		w, err := n.clnt.Create(tmpname)
 		if err != nil {
 defer fmt.Fprintf(os.Stderr, "@@@: PutObject: ERROR 3\n")
 			return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
@@ -640,7 +641,8 @@ fmt.Fprintf(os.Stderr, "@@@ NewMultipartUpload %q %q\n", bucket, object)
 
 	uploadID = minio.MustGetUUID()
 	//if err = n.clnt.CreateEmptyFile(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID)); err != nil {
-	if err = n.clnt.Mkdir(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID), os.FileMode(0755)); err != nil {
+	dirName := minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID)
+	if err = n.clnt.Mkdir(dirName, os.FileMode(0755)); err != nil {
 		return uploadID, gfarmToObjectErr(ctx, err, bucket)
 	}
 
@@ -659,7 +661,8 @@ fmt.Fprintf(os.Stderr, "@@@ ListMultipartUploads %q %q\n", bucket, prefix)
 }
 
 func (n *gfarmObjects) checkUploadIDExists(ctx context.Context, bucket, object, uploadID string) (err error) {
-	_, err = n.clnt.Stat(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID))
+	dirName := minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID)
+	_, err = n.clnt.Stat(dirName)
 	if err != nil {
 		return gfarmToObjectErr(ctx, err, bucket, object, uploadID)
 	}
@@ -694,11 +697,13 @@ fmt.Fprintf(os.Stderr, "@@@ PutObjectPart: FAIL %v\n", err)
 		return info, gfarmToObjectErr(ctx, err, bucket)
 	}
 
-	var w *FileReadWriter
+	//var w *FileReadWriter2
 fmt.Fprintf(os.Stderr, "@@@ clnt.Create object: %q uploadID: %q partID: %d\n", object, uploadID, partID)
 	//w, err = n.clnt.Append(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID))
+	dirName := minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID)
+	cacheDirName := ""
 	partName := fmt.Sprintf("%05d", partID)
-	w, err = n.clnt.Create(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID, partName))
+	w, err := n.clnt.Create2(dirName, cacheDirName, partName)
 	if err != nil {
 		return info, gfarmToObjectErr(ctx, err, bucket, object, uploadID)
 	}
@@ -758,16 +763,18 @@ fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload bucket:%q object:%q  parts:%
 */
 
 	for _, part := range parts {
-		var r *FileReadWriter
+		dirName := minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID)
+		cacheDirName := ""
 		partName := fmt.Sprintf("%05d", part.PartNumber)
-		r, err = n.clnt.Open(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID, partName))
-fmt.Fprintf(os.Stderr, "@@@ Copy %q => %q\n", minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID, partName), minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID, "00000"))
+		r, err := n.clnt.Open2(dirName, cacheDirName, partName)
+fmt.Fprintf(os.Stderr, "@@@ Copy %q %q => %q\n", minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID), partName, dirName + "/" + "00000")
 		if err != nil {
 			return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 		}
 		defer r.Close()
 		_, err = io.Copy(w, r)
 	}
+	w.Close()
 
 	err = n.clnt.Rename(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID, "00000"), name)
 
@@ -792,7 +799,10 @@ fmt.Fprintf(os.Stderr, "@@@ Copy %q => %q\n", minio.PathJoin(gfarmSeparator, min
 		return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 	}
 
-	err = n.clnt.RemoveAll(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID))
+// cacheDirName := ""
+// RemoveAll(cacheDirName)
+	dirName := minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID)
+	err = n.clnt.RemoveAll(dirName)
 
 	// Calculate s3 compatible md5sum for complete multipart.
 	s3MD5 := minio.ComputeCompleteMultipartMD5(parts)
@@ -815,7 +825,8 @@ fmt.Fprintf(os.Stderr, "@@@ AbortMultipartUpload %q %q\n", bucket, object)
 	if err != nil {
 		return gfarmToObjectErr(ctx, err, bucket)
 	}
-	return gfarmToObjectErr(ctx, n.clnt.RemoveAll(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID)), bucket, object, uploadID)
+	dirName := minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID)
+	return gfarmToObjectErr(ctx, n.clnt.RemoveAll(dirName), bucket, object, uploadID)
 }
 
 // IsReady returns whether the layer is ready to take requests.
