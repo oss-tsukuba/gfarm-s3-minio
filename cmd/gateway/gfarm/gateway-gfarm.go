@@ -774,7 +774,6 @@ fmt.Fprintf(os.Stderr, "@@@ Copy %q %q => %q\n", minio.PathJoin(gfarmSeparator, 
 		defer r.Close()
 		_, err = io.Copy(w, r)
 	}
-	w.Close()
 
 	if err := w.Close() {
 		return err
