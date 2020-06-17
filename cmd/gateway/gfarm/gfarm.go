@@ -168,6 +168,14 @@ import "C"
 @	return &FileReadWriter{f}, nil
 @}
 @
+@//ファイルシステム版のOpen2, Create2 は、それぞれOpen, Createと同じ
+@func (clnt *Client) Open2(dirname, ignore, path string) (*FileReadWriter, error) {
+@	return clnt.Open(osPathJoin(dirname, path))
+@}
+@func (clnt *Client) Create2(dirname, ignore, path string) (*FileReadWriter, error) {
+@	return clnt.Create(osPathJoin(dirname, path))
+@}
+@
 @func (f *FileReadWriter) Close() (error) {
 @	return f.f.Close()
 @}
@@ -275,6 +283,10 @@ type FileReadWriter struct {
 	f *gfFile
 }
 
+type FileReadWriter2 struct {
+	f, g *gfFile
+}
+
 type FileInfo struct {
 	i gfFileInfo
 }
@@ -289,6 +301,7 @@ type GfarmError struct {
 
 func ClientOptionsFromConf() ClientOptions {
 	return ClientOptions{"", "/home/hp120273/hpci005858/tmp/nas1"}
+/* XXX コマンドライン引数から 受け取る  */
 }
 
 func (e *GfarmError) Error() string {
@@ -344,6 +357,48 @@ func (r *FileReadWriter) Read(p []byte) (int, error) {
 }
 
 func (w *FileReadWriter) Write(p []byte) (int, error) {
+	return w.f.Write(p)
+}
+
+/* Multipart はさいあっぷでうわがき できるので、
+  openのじてんで、local と gfarm のりょうほう に からの ふぁいるを
+  さくせい する ひつよう が ある
+ */
+func (clnt *Client) Open2(dirname, chaceDirname, path string) (*FileReadWriter2, error) {
+	f, err := gfOpenFile(gfPathJoin(clnt.opts.Rootdir, gfPathJoin(dirname, path)))
+	if err != nil {
+		return nil, err
+	}
+/* ここで、g に、ふぁいるしすてむのどういつぱすをひらいておく */
+	return &FileReadWriter2{f, nil}, nil
+}
+
+func (clnt *Client) Create2(dirname, chaceDirname, path string) (*FileReadWriter2, error) {
+	f, err := gfCreateFile(gfPathJoin(clnt.opts.Rootdir, gfPathJoin(dirname, path)), 0666)
+	if err != nil {
+		return nil, err
+	}
+/* ここで、g に、ふぁいるしすてむのどういつぱすをひらいておく */
+	return &FileReadWriter2{f, nil}, nil
+}
+
+func (f *FileReadWriter2) Close() (error) {
+/* gもクローズする*/
+	return f.f.gfClose()
+}
+
+func (r *FileReadWriter2) ReadAt(p []byte, off int64) (int, error) {
+/* gからよめるうちは、gからよむ*/
+	return r.f.ReadAt(p, off)
+}
+
+func (r *FileReadWriter2) Read(p []byte) (int, error) {
+/* gからよめるうちは、gからよむ*/
+	return r.f.Read(p)
+}
+
+func (w *FileReadWriter2) Write(p []byte) (int, error) {
+/* gにかけるうちは、gにかく*/
 	return w.f.Write(p)
 }
 
@@ -445,41 +500,44 @@ type gfFileInfo struct {
 func gfStat(path string) (gfFileInfo, error) {
 fmt.Fprintf(os.Stderr, "@@@ gfStat: %q\n", path)
 defer fmt.Fprintf(os.Stderr, "@@@ gfStat EXIT: %q\n", path)
-	var sb0, sb1, sb2 C.struct_gfs_stat
-	var gf C.GFS_File
+//@var sb0, sb1, sb2 C.struct_gfs_stat
+	var sb C.struct_gfs_stat
+//@var gf C.GFS_File
 
-	err := gfs_stat(path, &sb0)
+	err := gfs_stat(path, &sb)
 	if err != nil {
 fmt.Fprintf(os.Stderr, "@@@ gfStat gfs_stat ERROR: %q %v\n", path, err)
 		return gfFileInfo{}, err
 	}
-	defer gfs_stat_free(&sb0)
-	if gfarm_s_isdir(sb0.st_mode) {
-		return gfFileInfo{path, sb0.st_size, sb0.st_mode, sb0.st_atimespec, sb0.st_mtimespec}, nil
-	}
+	defer gfs_stat_free(&sb)
+//@ if gfarm_s_isdir(sb0.st_mode) {
+	return gfFileInfo{path, sb.st_size, sb.st_mode, sb.st_atimespec, sb.st_mtimespec}, nil
+//@}
 
-	err = gfs_pio_open(path, C.GFARM_FILE_RDONLY, &gf)
-	if err != nil {
-fmt.Fprintf(os.Stderr, "@@@ gfStat gfs_pio_open ERROR: %q %v\n", path, err)
-		return gfFileInfo{}, err
-	}
-	defer gfs_pio_close(gf)
-
-	err = gfs_pio_stat(gf, &sb1)
-	if err != nil {
-fmt.Fprintf(os.Stderr, "@@@ gfStat gfs_pio_stat ERROR: %q %v\n", path, err)
-		return gfFileInfo{}, err
-	}
-	defer gfs_stat_free(&sb1)
-
-	err = gfs_fstat(gf, &sb2)
-	if err != nil {
-fmt.Fprintf(os.Stderr, "@@@ gfStat gfs_fstat ERROR: %q %v\n", path, err)
-		return gfFileInfo{}, err
-	}
-	defer gfs_stat_free(&sb2)
-
-	return gfFileInfo{path, sb1.st_size, sb1.st_mode, sb2.st_atimespec, sb2.st_mtimespec}, nil
+/*
+@	err = gfs_pio_open(path, C.GFARM_FILE_RDONLY, &gf)
+@	if err != nil {
+@fmt.Fprintf(os.Stderr, "@@@ gfStat gfs_pio_open ERROR: %q %v\n", path, err)
+@		return gfFileInfo{}, err
+@	}
+@	defer gfs_pio_close(gf)
+@
+@	err = gfs_pio_stat(gf, &sb1)
+@	if err != nil {
+@fmt.Fprintf(os.Stderr, "@@@ gfStat gfs_pio_stat ERROR: %q %v\n", path, err)
+@		return gfFileInfo{}, err
+@	}
+@	defer gfs_stat_free(&sb1)
+@
+@	err = gfs_fstat(gf, &sb2)
+@	if err != nil {
+@fmt.Fprintf(os.Stderr, "@@@ gfStat gfs_fstat ERROR: %q %v\n", path, err)
+@		return gfFileInfo{}, err
+@	}
+@	defer gfs_stat_free(&sb2)
+@
+@	return gfFileInfo{path, sb1.st_size, sb1.st_mode, sb2.st_atimespec, sb2.st_mtimespec}, nil
+*/
 }
 
 func gfOpenFile(path string) (*gfFile, error) {
