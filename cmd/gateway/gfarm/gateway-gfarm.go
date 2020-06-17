@@ -742,7 +742,8 @@ fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload bucket:%q object:%q  parts:%
 
 	//w, err = n.clnt.Append(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID))
 	//w, err = n.clnt.Append(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID))
-	var w *FileReadWriter
+	//var w *FileReadWriter
+	var w FileReadWriter
 	w, err = n.clnt.Create(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID, "00000"))
 /*
 	if os.IsExist(err) {
@@ -775,8 +776,9 @@ fmt.Fprintf(os.Stderr, "@@@ Copy %q %q => %q\n", minio.PathJoin(gfarmSeparator, 
 		_, err = io.Copy(w, r)
 	}
 
-	if err := w.Close() {
-		return err
+	err = w.Close()
+	if err != nil {
+		return objInfo, err
 	}
 	err = n.clnt.Rename(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID, "00000"), name)
 
