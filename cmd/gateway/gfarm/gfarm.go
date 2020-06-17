@@ -168,11 +168,11 @@ import "C"
 @	return &FileReadWriter{f}, nil
 @}
 @
-@//ファイルシステム版のOpen2, Create2 は、それぞれOpen, Createと同じ
-@func (clnt *Client) Open2(dirname, ignore, path string) (*FileReadWriter, error) {
+@//ファイルシステム版のOpenWithLocalCache, CreateWithLocalCache は、それぞれOpen, Createと同じ
+@func (clnt *Client) OpenWithLocalCache(dirname, ignore, path string) (*FileReadWriter, error) {
 @	return clnt.Open(osPathJoin(dirname, path))
 @}
-@func (clnt *Client) Create2(dirname, ignore, path string) (*FileReadWriter, error) {
+@func (clnt *Client) CreateWithLocalCache(dirname, ignore, path string) (*FileReadWriter, error) {
 @	return clnt.Create(osPathJoin(dirname, path))
 @}
 @
@@ -283,7 +283,7 @@ type FileReadWriter struct {
 	f *gfFile
 }
 
-type FileReadWriter2 struct {
+type FileReadWriterWithLocalCache struct {
 	f, g *gfFile
 }
 
@@ -364,40 +364,40 @@ func (w *FileReadWriter) Write(p []byte) (int, error) {
   openのじてんで、local と gfarm のりょうほう に からの ふぁいるを
   さくせい する ひつよう が ある
  */
-func (clnt *Client) Open2(dirname, chaceDirname, path string) (*FileReadWriter2, error) {
+func (clnt *Client) OpenWithLocalCache(dirname, chaceDirname, path string) (*FileReadWriterWithLocalCache, error) {
 	f, err := gfOpenFile(gfPathJoin(clnt.opts.Rootdir, gfPathJoin(dirname, path)))
 	if err != nil {
 		return nil, err
 	}
 /* ここで、g に、ふぁいるしすてむのどういつぱすをひらいておく */
-	return &FileReadWriter2{f, nil}, nil
+	return &FileReadWriterWithLocalCache{f, nil}, nil
 }
 
-func (clnt *Client) Create2(dirname, chaceDirname, path string) (*FileReadWriter2, error) {
+func (clnt *Client) CreateWithLocalCache(dirname, chaceDirname, path string) (*FileReadWriterWithLocalCache, error) {
 	f, err := gfCreateFile(gfPathJoin(clnt.opts.Rootdir, gfPathJoin(dirname, path)), 0666)
 	if err != nil {
 		return nil, err
 	}
 /* ここで、g に、ふぁいるしすてむのどういつぱすをひらいておく */
-	return &FileReadWriter2{f, nil}, nil
+	return &FileReadWriterWithLocalCache{f, nil}, nil
 }
 
-func (f *FileReadWriter2) Close() (error) {
+func (f *FileReadWriterWithLocalCache) Close() (error) {
 /* gもクローズする*/
 	return f.f.gfClose()
 }
 
-func (r *FileReadWriter2) ReadAt(p []byte, off int64) (int, error) {
+func (r *FileReadWriterWithLocalCache) ReadAt(p []byte, off int64) (int, error) {
 /* gからよめるうちは、gからよむ*/
 	return r.f.ReadAt(p, off)
 }
 
-func (r *FileReadWriter2) Read(p []byte) (int, error) {
+func (r *FileReadWriterWithLocalCache) Read(p []byte) (int, error) {
 /* gからよめるうちは、gからよむ*/
 	return r.f.Read(p)
 }
 
-func (w *FileReadWriter2) Write(p []byte) (int, error) {
+func (w *FileReadWriterWithLocalCache) Write(p []byte) (int, error) {
 /* gにかけるうちは、gにかく*/
 	return w.f.Write(p)
 }

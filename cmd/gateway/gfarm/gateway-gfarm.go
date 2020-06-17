@@ -703,7 +703,7 @@ fmt.Fprintf(os.Stderr, "@@@ clnt.Create object: %q uploadID: %q partID: %d\n", o
 	dirName := minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID)
 	cacheDirName := ""
 	partName := fmt.Sprintf("%05d", partID)
-	w, err := n.clnt.Create2(dirName, cacheDirName, partName)
+	w, err := n.clnt.CreateWithLocalCache(dirName, cacheDirName, partName)
 	if err != nil {
 		return info, gfarmToObjectErr(ctx, err, bucket, object, uploadID)
 	}
@@ -766,7 +766,7 @@ fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload bucket:%q object:%q  parts:%
 		dirName := minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID)
 		cacheDirName := ""
 		partName := fmt.Sprintf("%05d", part.PartNumber)
-		r, err := n.clnt.Open2(dirName, cacheDirName, partName)
+		r, err := n.clnt.OpenWithLocalCache(dirName, cacheDirName, partName)
 fmt.Fprintf(os.Stderr, "@@@ Copy %q %q => %q\n", minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID), partName, dirName + "/" + "00000")
 		if err != nil {
 			return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
