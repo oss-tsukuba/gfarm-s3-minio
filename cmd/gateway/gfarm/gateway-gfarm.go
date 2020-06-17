@@ -769,6 +769,9 @@ fmt.Fprintf(os.Stderr, "@@@ Copy %q => %q\n", minio.PathJoin(gfarmSeparator, min
 		_, err = io.Copy(w, r)
 	}
 
+	if err := w.Close() {
+		return err
+	}
 	err = n.clnt.Rename(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID, "00000"), name)
 
 	//Object already exists is an error on GFARM
