@@ -502,7 +502,7 @@ func (n *gfarmObjects) GetObject(ctx context.Context, bucket, key string, startO
 	if _, err := gf.Stat(minio.PathJoin(gfarmRootdir, gfarmSeparator, bucket)); err != nil {
 		return gfarmToObjectErr(ctx, err, bucket)
 	}
-	rd, err := gf.OpenFile(minio.PathJoin(gfarmRootdir, gfarmSeparator, bucket, key), os.O_RDONLY, 0666)
+	rd, err := gf.OpenFile(minio.PathJoin(gfarmRootdir, gfarmSeparator, bucket, key), os.O_RDONLY, os.FileMode(0644))
 	if err != nil {
 		return gfarmToObjectErr(ctx, err, bucket, key)
 	}
@@ -600,9 +600,7 @@ defer fmt.Fprintf(os.Stderr, "@@@: PutObject: ERROR 2\n")
 		}
 	} else {
 		tmpname := minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, minio.MustGetUUID())
-//XXX このファイルに、FileReadWriter, FileReadWriter2 というかためいを、かきたくない
-		//var w *FileReadWriter
-		w, err := gf.OpenFile(minio.PathJoin(gfarmRootdir, tmpname), os.O_WRONLY | os.O_CREATE | os.O_TRUNC, 0666)
+		w, err := gf.OpenFile(minio.PathJoin(gfarmRootdir, tmpname), os.O_WRONLY | os.O_CREATE | os.O_TRUNC, os.FileMode(0644))
 		if err != nil {
 defer fmt.Fprintf(os.Stderr, "@@@: PutObject: ERROR 3\n")
 			return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
@@ -715,7 +713,7 @@ fmt.Fprintf(os.Stderr, "@@@ PutObjectPart: FAIL %v\n", err)
 fmt.Fprintf(os.Stderr, "@@@ clnt.Create object: %q uploadID: %q partID: %d\n", object, uploadID, partID)
 	//w, err = n.clnt.Append(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID))
 	partName := minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID, fmt.Sprintf("%05d", partID))
-	w, err := gf.OpenFile(minio.PathJoin(gfarmRootdir, partName), os.O_WRONLY | os.O_CREATE | os.O_TRUNC, 0666)
+	w, err := gf.OpenFile(minio.PathJoin(gfarmRootdir, partName), os.O_WRONLY | os.O_CREATE | os.O_TRUNC, os.FileMode(0644))
 	if err != nil {
 		return info, gfarmToObjectErr(ctx, err, bucket, object, uploadID)
 	}
@@ -758,7 +756,7 @@ fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload bucket:%q object:%q  parts:%
 	//var w FileReadWriter
 	var w *gf.File
 	tmpname := minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID, "00000")
-	w, err = gf.OpenFile(minio.PathJoin(gfarmRootdir, tmpname), os.O_WRONLY | os.O_CREATE | os.O_TRUNC, 0666)
+	w, err = gf.OpenFile(minio.PathJoin(gfarmRootdir, tmpname), os.O_WRONLY | os.O_CREATE | os.O_TRUNC, os.FileMode(0644))
 /*
 @	if os.IsExist(err) {
 @		if err = n.clnt.Remove(name); err != nil {
@@ -779,7 +777,7 @@ fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload bucket:%q object:%q  parts:%
 
 	for _, part := range parts {
 		partName := minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID, fmt.Sprintf("%05d", part.PartNumber))
-		r, err := gf.OpenFile(minio.PathJoin(gfarmRootdir, partName), os.O_RDONLY, 0666)
+		r, err := gf.OpenFile(minio.PathJoin(gfarmRootdir, partName), os.O_RDONLY, os.FileMode(0644))
 fmt.Fprintf(os.Stderr, "@@@ Copy %q => %q\n", partName, tmpname)
 		if err != nil {
 			return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
