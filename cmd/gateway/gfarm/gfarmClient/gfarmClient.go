@@ -249,13 +249,21 @@ func gfarm_s_isdir(mode C.gfarm_mode_t) bool {
 func gfs_pio_open(path string, flags int, gf *C.GFS_File) error {
 	cpath := C.CString(path)
 	defer C.free(unsafe.Pointer(cpath))
-	return gfCheckError(C.gfs_pio_open(cpath, gfs_hook_open_flags_gfarmize(flags), (*C.GFS_File)(unsafe.Pointer(gf))))
+	cflags := gfs_hook_open_flags_gfarmize(flags)
+	if cflags == C.int(-1) {
+		return &gfError{-1}
+	}
+	return gfCheckError(C.gfs_pio_open(cpath, cflags, (*C.GFS_File)(unsafe.Pointer(gf))))
 }
 
 func gfs_pio_create(path string, flags int, mode os.FileMode, gf *C.GFS_File) error {
 	cpath := C.CString(path)
 	defer C.free(unsafe.Pointer(cpath))
-	return gfCheckError(C.gfs_pio_create(cpath, gfs_hook_open_flags_gfarmize(flags), C.gfarm_mode_t(mode) & C.GFARM_S_ALLPERM, (*C.GFS_File)(unsafe.Pointer(gf))))
+	cflags := gfs_hook_open_flags_gfarmize(flags)
+	if cflags == C.int(-1) {
+		return &gfError{-1}
+	}
+	return gfCheckError(C.gfs_pio_create(cpath, cflags, C.gfarm_mode_t(mode) & C.GFARM_S_ALLPERM, (*C.GFS_File)(unsafe.Pointer(gf))))
 }
 
 func gfs_pio_close(gf C.GFS_File) error {
