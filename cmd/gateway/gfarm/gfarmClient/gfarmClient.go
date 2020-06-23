@@ -5,6 +5,7 @@ package gfarmClient
 // #include <stdlib.h>
 // #include <gfarm/gfarm.h>
 // inline int gfarm_s_isdir(gfarm_mode_t m) { return GFARM_S_ISDIR(m); }
+// inline void gflog_debug2(int msg_no, const char *format) { gflog_debug(msg_no, format); }
 import "C"
 
 import (
@@ -46,6 +47,8 @@ func Stat(path string) (FileInfo, error) {
 func OpenFile(path string, flags int, perm os.FileMode) (*File, error) {
 	var gf C.GFS_File
 	var err error
+
+gflog_debug(C.GFARM_MSG_UNFIXED, "openFile");
 
 	if (flags & os.O_CREATE) != 0 {
 		err = gfs_pio_create(path, flags, perm, &gf)
@@ -225,6 +228,9 @@ func gfCheckError(code C.int) error {
 }
 
 func Gfarm_initialize() error {
+	var syslog_priority C.int
+	syslog_priority = gflog_syslog_name_to_priority(GFARM2FS_SYSLOG_PRIORITY_DEBUG);
+	gflog_set_priority_level(syslog_priority)
 	return gfCheckError(C.gfarm_initialize((*C.int)(C.NULL), (***C.char)(C.NULL)))
 }
 
@@ -400,3 +406,26 @@ func uncache_parent(path string) () {
 }
 
 //func gfs_stat_cache_expiration_set() () { }
+
+//void gflog_initialize(void);
+//void gflog_terminate(void);
+
+const (
+	GFARM2FS_SYSLOG_PRIORITY_DEBUG = "debug"
+)
+
+func gflog_syslog_name_to_priority(name string) C.int {
+	cname := C.CString(name)
+	defer C.free(unsafe.Pointer(cname))
+	return C.gflog_syslog_name_to_priority(cname)
+}
+
+func gflog_set_priority_level(syslog_priority C.int) () {
+	C.gflog_set_priority_level(syslog_priority)
+}
+
+func gflog_debug(msg_no C.int, format string) () {
+	cformat := C.CString(format)
+	defer C.free(unsafe.Pointer(cformat))
+	C.gflog_debug2(msg_no, cformat)
+}
