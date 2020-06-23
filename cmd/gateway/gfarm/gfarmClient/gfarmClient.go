@@ -14,6 +14,7 @@ import (
 	"path"
 	"time"
 	"unsafe"
+	"fmt"
 )
 
 const (
@@ -427,5 +428,6 @@ func gflog_set_priority_level(syslog_priority C.int) () {
 func gflog_debug(msg_no C.int, format string) () {
 	cformat := C.CString(format)
 	defer C.free(unsafe.Pointer(cformat))
+fmt.Fprintf(os.Stderr, "@@@ gflog_debug %q\n", format)
 	C.gflog_debug2(msg_no, cformat)
 }
