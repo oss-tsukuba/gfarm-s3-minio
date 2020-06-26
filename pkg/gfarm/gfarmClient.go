@@ -444,3 +444,39 @@ func gflog_debug(msg_no C.int, format string) () {
 fmt.Fprintf(os.Stderr, "@@@ gflog_debug %q\n", format)
 	C.gflog_debug2(msg_no, cformat)
 }
+
+//C.GFS_XATTR_CREATE
+//C.GFS_XATTR_REPLACE
+const (
+	GFS_XATTR_CREATE = C.GFS_XATTR_CREATE
+	GFS_XATTR_REPLACE = C.GFS_XATTR_REPLACE
+)
+
+func LSetXattr(path, name string, value unsafe.Pointer, size uintptr, flags int) error {
+	return gfs_lsetxattr(path, name, value, C.size_t(size), C.int(flags))
+}
+
+func LGetXattrCached(path, name string, value unsafe.Pointer, size *uintptr) error {
+	var csize C.size_t
+	csize = C.size_t(*size)
+	e := gfs_lgetxattr_cached(path, name, value, &csize)
+	*size = uintptr(csize)
+	return e
+}
+
+func gfs_lsetxattr(path, name string, value unsafe.Pointer, size C.size_t, flags C.int) error {
+	cpath := C.CString(path)
+	defer C.free(unsafe.Pointer(cpath))
+	cname := C.CString(name)
+	defer C.free(unsafe.Pointer(cname))
+	return gfCheckError(C.gfs_lsetxattr(cpath, cname, value, size, flags))
+}
+
+func gfs_lgetxattr_cached(path, name string, value unsafe.Pointer, sizep *C.size_t) error {
+	cpath := C.CString(path)
+	defer C.free(unsafe.Pointer(cpath))
+	cname := C.CString(name)
+	defer C.free(unsafe.Pointer(cname))
+	return gfCheckError(C.gfs_lgetxattr_cached(cpath, cname, value, sizep))
+}
+//user.gfarms3.partsize
