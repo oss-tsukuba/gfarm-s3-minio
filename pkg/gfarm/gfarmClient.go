@@ -49,7 +49,7 @@ func OpenFile(path string, flags int, perm os.FileMode) (*File, error) {
 	var gf C.GFS_File
 	var err error
 
-gflog_debug(C.GFARM_MSG_UNFIXED, "openFile");
+gflog_debug(GFARM_MSG_UNFIXED, "openFile");
 
 	if (flags & os.O_CREATE) != 0 {
 		err = gfs_pio_create(path, flags, perm, &gf)
@@ -229,9 +229,10 @@ func gfCheckError(code C.int) error {
 }
 
 func Gfarm_initialize() error {
-	var syslog_priority C.int
-	syslog_priority = gflog_syslog_name_to_priority(GFARM2FS_SYSLOG_PRIORITY_DEBUG);
+	syslog_priority := gflog_syslog_name_to_priority(GFARM2FS_SYSLOG_PRIORITY_DEBUG)
 	gflog_set_priority_level(syslog_priority)
+	syslog_facility := gflog_syslog_name_to_facility(GFARM2FS_SYSLOG_FACILITY_DEFAULT)
+	gflog_syslog_open(C.LOG_PID, syslog_facility)
 	return gfCheckError(C.gfarm_initialize((*C.int)(C.NULL), (***C.char)(C.NULL)))
 }
 
@@ -413,6 +414,8 @@ func uncache_parent(path string) () {
 
 const (
 	GFARM2FS_SYSLOG_PRIORITY_DEBUG = "debug"
+	GFARM2FS_SYSLOG_FACILITY_DEFAULT = "local0"
+	GFARM_MSG_UNFIXED = C.GFARM_MSG_UNFIXED
 )
 
 func gflog_syslog_name_to_priority(name string) C.int {
@@ -421,8 +424,18 @@ func gflog_syslog_name_to_priority(name string) C.int {
 	return C.gflog_syslog_name_to_priority(cname)
 }
 
+func gflog_syslog_name_to_facility(name string) C.int {
+	cname := C.CString(name)
+	defer C.free(unsafe.Pointer(cname))
+	return C.gflog_syslog_name_to_facility(cname)
+}
+
 func gflog_set_priority_level(syslog_priority C.int) () {
 	C.gflog_set_priority_level(syslog_priority)
+}
+
+func gflog_syslog_open(syslog_flags, syslog_priority C.int) () {
+	C.gflog_syslog_open(syslog_flags, syslog_priority)
 }
 
 func gflog_debug(msg_no C.int, format string) () {

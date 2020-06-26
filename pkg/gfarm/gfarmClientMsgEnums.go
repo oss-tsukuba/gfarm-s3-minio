@@ -1,0 +1,3 @@
+package gfarmClient
+const GFARM_MSG_4000001 = 4000001
+const GFARM_MSG_4000002 = 4000002

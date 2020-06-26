@@ -32,7 +32,8 @@ import (
 	"syscall"
 	"time"
 
-	gf "github.com/minio/minio/cmd/gateway/gfarm/gfarmClient"
+	//gf "github.com/minio/minio/cmd/gateway/gfarm/gfarmClient"
+	gf "github.com/minio/minio/pkg/gfarm"
 	"github.com/minio/cli"
 	"github.com/minio/minio-go/v6/pkg/s3utils"
 	minio "github.com/minio/minio/cmd"
