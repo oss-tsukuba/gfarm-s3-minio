@@ -2,6 +2,7 @@ package gfarmClient
 
 // #cgo CFLAGS: -g -Wall -I/usr/local/include
 // #cgo LDFLAGS: -L/usr/local/lib -lgfarm -Wl,-rpath,/usr/local/lib
+// #include <sys/statvfs.h>
 // #include <stdlib.h>
 // #include <gfarm/gfarm.h>
 // inline int gfarm_s_isdir(gfarm_mode_t m) { return GFARM_S_ISDIR(m); }
@@ -49,7 +50,7 @@ func OpenFile(path string, flags int, perm os.FileMode) (*File, error) {
 	var gf C.GFS_File
 	var err error
 
-gflog_debug(GFARM_MSG_UNFIXED, "openFile");
+gflog_debug(GFARM_MSG_UNFIXED, "openFile")
 
 	if (flags & os.O_CREATE) != 0 {
 		err = gfs_pio_create(path, flags, perm, &gf)
@@ -166,7 +167,7 @@ func ReadDir(dirname string) ([]FileInfo, error) {
 	var entry *C.struct_gfs_dirent
 	var r []FileInfo
         err := gfs_opendir_caching(dirname, &d)
-        if err != nil {
+	if err != nil {
 		return nil, err
 	}
 	defer gfs_closedir(d)
@@ -213,12 +214,31 @@ func (r FileInfo) IsDir() bool {
 	return gfarm_s_isdir(r.st_mode)
 }
 
+type FsInfo struct {
+        Used, Total, Available uint64
+} 
+
+func StatFs() (FsInfo, error) {
+	var buf C.struct_statvfs
+	var r FsInfo
+	err := gfs_statfs(&buf)
+	if err != nil {
+		return FsInfo{}, err
+	}
+
+	r.Used = uint64(buf.f_blocks - buf.f_bavail) * uint64(buf.f_bsize)
+	r.Total = uint64(buf.f_blocks) * uint64(buf.f_bsize)
+	r.Available = uint64(buf.f_bavail) * uint64(buf.f_bsize)
+
+	return r, nil
+}
+
 type gfError struct {
 	code int
 }
 
-func (e gfError) Error() string {
-	return C.GoString(C.gfarm_error_string(C.int(e.code)))
+func (err gfError) Error() string {
+	return C.GoString(C.gfarm_error_string(C.int(err.code)))
 }
 
 func gfCheckError(code C.int) error {
@@ -409,8 +429,31 @@ func uncache_parent(path string) () {
 
 //func gfs_stat_cache_expiration_set() () { }
 
-//void gflog_initialize(void);
-//void gflog_terminate(void);
+func gfs_statfs(buf *C.struct_statvfs) error {
+        var used, avail, files C.gfarm_off_t
+
+	err := gfCheckError(C.gfs_statfs(&used, &avail, &files))
+	if err != nil {
+		return err
+	}
+
+	buf.f_bsize = 1024				/* XXX */
+	buf.f_frsize = 1024				/* XXX */
+	buf.f_blocks = C.ulong(used + avail)
+	buf.f_bfree = C.ulong(avail)
+	buf.f_bavail = C.ulong(avail)
+	buf.f_files = C.ulong(files)
+	buf.f_ffree = C.ulong(0)			/* XXX */
+	buf.f_favail = C.ulong(0)			/* XXX */
+	buf.f_fsid = 298				/* XXX */
+	buf.f_flag = 0					/* XXX */
+	buf.f_namemax = C.GFS_MAXNAMLEN
+
+	return nil
+}
+
+//void gflog_initialize(void)
+//void gflog_terminate(void)
 
 const (
 	GFARM2FS_SYSLOG_PRIORITY_DEBUG = "debug"
@@ -457,11 +500,10 @@ func LSetXattr(path, name string, value unsafe.Pointer, size uintptr, flags int)
 }
 
 func LGetXattrCached(path, name string, value unsafe.Pointer, size *uintptr) error {
-	var csize C.size_t
-	csize = C.size_t(*size)
-	e := gfs_lgetxattr_cached(path, name, value, &csize)
+	csize := C.size_t(*size)
+	err := gfs_lgetxattr_cached(path, name, value, &csize)
 	*size = uintptr(csize)
-	return e
+	return err
 }
 
 func gfs_lsetxattr(path, name string, value unsafe.Pointer, size C.size_t, flags C.int) error {
