@@ -458,7 +458,6 @@ func gfs_statfs(buf *C.struct_statvfs) error {
 const (
 	GFARM2FS_SYSLOG_PRIORITY_DEBUG = "debug"
 	GFARM2FS_SYSLOG_FACILITY_DEFAULT = "local0"
-	GFARM_MSG_UNFIXED = C.GFARM_MSG_UNFIXED
 )
 
 func gflog_syslog_name_to_priority(name string) C.int {
