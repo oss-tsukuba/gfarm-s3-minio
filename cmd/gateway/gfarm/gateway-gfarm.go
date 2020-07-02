@@ -1,4 +1,16 @@
 /*
+ * gfarmRootdirが、"gfarm:///" ではじまっていてもうごくはず
+ *
+ * 現在ルール
+ * gf.おおもじ <=> だいいちひきすうにgfarmRootdirが結合されている
+ *
+ * 新ルール
+ * gf.おおもじ <=> だいいちひきすうは、なまえがgfarm_url_ではじまる へんすう
+ * &&
+ * gfarm_url_ではじまる へんすう には、gfarmRootdirをappend する
+ */
+
+/*
  * Minio Cloud Storage, (C) 2019 Minio, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
