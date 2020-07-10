@@ -345,6 +345,7 @@ func (fs *FSObjects) MakeBucketWithLocation(ctx context.Context, bucket, locatio
 
 // GetBucketInfo - fetch bucket metadata info.
 func (fs *FSObjects) GetBucketInfo(ctx context.Context, bucket string) (bi BucketInfo, e error) {
+//fmt.Fprintf(os.Stderr, "@@@ GetBucketInfo %q\n", bucket)
 	bucketLock := fs.NewNSLock(ctx, bucket, "")
 	if e := bucketLock.GetRLock(globalObjectTimeout); e != nil {
 		return bi, e

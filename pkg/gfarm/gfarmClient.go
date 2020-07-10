@@ -35,6 +35,24 @@ type FileInfo struct {
 	st_mtimespec C.struct_gfarm_timespec
 }
 
+func IsNotExist(err error) bool {
+	switch err.(type) {
+	case *gfError:
+		return err.(*gfError).code == C.GFARM_ERR_NO_SUCH_FILE_OR_DIRECTORY
+	default:
+		return false
+	}
+}
+
+func IsExist(err error) bool {
+	switch err.(type) {
+	case *gfError:
+		return err.(*gfError).code == C.GFARM_ERR_ALREADY_EXISTS
+	default:
+		return false
+	}
+}
+
 func Stat(path string) (FileInfo, error) {
 	var sb C.struct_gfs_stat
 
