@@ -6,7 +6,9 @@ package gfarmClient
 // #include <stdlib.h>
 // #include <gfarm/gfarm.h>
 // inline int gfarm_s_isdir(gfarm_mode_t m) { return GFARM_S_ISDIR(m); }
-// inline void gflog_debug2(int msg_no, const char *format) { gflog_debug(msg_no, format); }
+// inline void gflog_debug1(int msg_no, const char *format) { gflog_debug(msg_no, format); }
+// inline void gflog_debug2(int msg_no, const char *format, const char *a2) { gflog_debug(msg_no, format, a2); }
+// inline void gflog_debug3(int msg_no, const char *format, const char *a2, char const *a3) { gflog_debug(msg_no, format, a2, a3); }
 import "C"
 
 import (
@@ -495,6 +497,7 @@ func gflog_set_priority_level(syslog_priority C.int) () {
 }
 
 func gflog_syslog_open(syslog_flags, syslog_priority C.int) () {
+fmt.Fprintf(os.Stderr, "@@@ gflog_syslog_open flags:%d priority:%d\n", int(syslog_flags), int(syslog_priority))
 	C.gflog_syslog_open(syslog_flags, syslog_priority)
 }
 
@@ -502,7 +505,22 @@ func gflog_debug(msg_no C.int, format string) () {
 	cformat := C.CString(format)
 	defer C.free(unsafe.Pointer(cformat))
 fmt.Fprintf(os.Stderr, "@@@ gflog_debug %q\n", format)
-	C.gflog_debug2(msg_no, cformat)
+	C.gflog_debug1(msg_no, cformat)
+}
+
+func gflog_vdebug(msg_no C.int, format ...string) () {
+fmt.Fprintf(os.Stderr, "@@@ gflog_debug %v\n", format)
+	cformat := make([]*C.char, len(format))
+	for i, _ := range format {
+		cformat[i] = C.CString(format[i])
+		defer C.free(unsafe.Pointer(cformat[i]))
+	}
+
+	switch len(cformat) {
+	case 1: C.gflog_debug1(msg_no, cformat[0])
+	case 2: C.gflog_debug2(msg_no, cformat[0], cformat[1])
+	case 3: C.gflog_debug3(msg_no, cformat[0], cformat[1], cformat[2])
+	}
 }
 
 //C.GFS_XATTR_CREATE
