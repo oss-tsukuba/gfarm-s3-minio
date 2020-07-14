@@ -8,6 +8,9 @@
  * gf.おおもじ <=> だいいちひきすうは、なまえがgfarm_url_ではじまる へんすう
  * &&
  * gfarm_url_ではじまる へんすう には、gfarmRootdirをappend する
+ *
+ * XXXおおもじ で はじまる かんすう は、えらーは gfarmToObjectErr(ctx, err, bucket, object) 
+ * を かえす。
  */
 
 /*
@@ -29,9 +32,12 @@
 package gfarm
 
 import (
+	"bytes"
 	"context"
+        "crypto/md5"
 	"errors"
 	"fmt"
+        "hash"
 	"io"
 	"io/ioutil"
 //	"net"
@@ -62,10 +68,13 @@ const (
 	gfarmBackend = "gfarm"
 
 	gfarmS3OffsetKey = "user.gfarms3.offset"
+	gfarmS3DigestKey = "user.gfarms3.part_digest"
 	gfarmSeparator = minio.SlashSeparator
 
 	gfarmCachePathEnvVar        = "MINIO_GFARMS3_CACHEDIR"
 	gfarmCacheSizeEnvVar        = "MINIO_GFARMS3_CACHEDIR_SIZE_MB"
+
+	gfarmPartfileDigestEnvVar   = "GFARMS3_PARTFILE_DIGEST"
 
 	gfarmDefaultCacheSize = 16 * humanize.MiByte
 )
@@ -166,7 +175,10 @@ fmt.Fprintf(os.Stderr, "@@@ cacheCapacity = %d\n", cacheCapacity)
 		if err = os.MkdirAll(minio.PathJoin(cacheRootdir, gfarmSeparator, minioMetaTmpBucket), os.FileMode(0755)); err != nil {
 			return nil, err
 		}
-		cachectl = &cacheController{cacheRootdir, 0, int64(cacheCapacity), 0, &sync.Mutex{}}
+		partfile_digest := env.Get(gfarmPartfileDigestEnvVar, "")
+		enable_partfile_digest := partfile_digest != "no"
+fmt.Fprintf(os.Stderr, "@@@ GFARMS3_PARTFILE_DIGEST = %q, enable_partfile_digest = %v\n", partfile_digest, enable_partfile_digest)
+		cachectl = &cacheController{cacheRootdir, 0, int64(cacheCapacity), 0, &sync.Mutex{}, enable_partfile_digest}
 	}
 
 	n := &gfarmObjects{gfarmctl: gfarmctl, cachectl: cachectl, listPool: minio.NewTreeWalkPool(time.Minute * 30)}
@@ -235,6 +247,7 @@ type cacheController struct {
 	cacheRootdir string
 	fasterTotal, fasterLimit, fasterMax int64
 	mutex *sync.Mutex
+	enable_partfile_digest bool
 }
 
 // gfarmObjects implements gateway for Minio and S3 compatible object storage servers.
@@ -715,9 +728,10 @@ defer fmt.Fprintf(os.Stderr, "@@@ PutObjectPart EXIT bucket:%q object:%q uploadI
 	if n.cachectl != nil {
 		var value int64 = 0
 //fmt.Fprintf(os.Stderr, "@@@ LSetXattr %s = %x (%d)\n", gfarmS3OffsetKey, value, unsafe.Sizeof(value))
+//XXX
 		err = gf.LSetXattr(minio.PathJoin(n.gfarmctl.gfarmRootdir, partName), gfarmS3OffsetKey, unsafe.Pointer(&value), unsafe.Sizeof(value), gf.GFS_XATTR_CREATE)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "@@@ LSetXattr ERROR: %q\n", err)
+			fmt.Fprintf(os.Stderr, "@@@ LSetXattr ERROR: %q %q\n", gfarmS3OffsetKey, err)
 		}
 
 		w_cache, err := os.OpenFile(minio.PathJoin(n.cachectl.cacheRootdir, partName), os.O_WRONLY | os.O_CREATE | os.O_TRUNC, os.FileMode(0644))
@@ -737,7 +751,18 @@ defer fmt.Fprintf(os.Stderr, "@@@ PutObjectPart EXIT bucket:%q object:%q uploadI
 //fmt.Fprintf(os.Stderr, "@@@ LSetXattr %s = %d (%d)\n", gfarmS3OffsetKey, value, unsafe.Sizeof(value))
 		err = gf.LSetXattr(minio.PathJoin(n.gfarmctl.gfarmRootdir, partName), gfarmS3OffsetKey, unsafe.Pointer(&value), unsafe.Sizeof(value), gf.GFS_XATTR_REPLACE)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "@@@ LSetXattr ERROR: %q\n", err)
+			fmt.Fprintf(os.Stderr, "@@@ LSetXattr ERROR: %q %q\n", gfarmS3OffsetKey, err)
+		}
+
+		hash := wr.(*cachedFile).hash
+		if hash != nil {
+			var hash_size uintptr = uintptr(hash.Size())
+			ha := hash.Sum(nil)
+fmt.Fprintf(os.Stderr, "@@@ WRITTERN_HASH = %x\n", ha)
+			err = gf.LSetXattr(minio.PathJoin(n.gfarmctl.gfarmRootdir, partName), gfarmS3DigestKey, unsafe.Pointer(&ha[0]), hash_size, gf.GFS_XATTR_CREATE)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "@@@ LSetXattr ERROR: %q %q\n", gfarmS3DigestKey, err)
+			}
 		}
 
 	} else {
@@ -752,6 +777,8 @@ defer fmt.Fprintf(os.Stderr, "@@@ PutObjectPart EXIT bucket:%q object:%q uploadI
 	info.ETag = r.MD5CurrentHexString()
 	info.LastModified = minio.UTCNow()
 	info.Size = r.Reader.Size()
+
+fmt.Fprintf(os.Stderr, "@@@ INFO_HASH = %q\n", info.ETag)
 
 	return info, nil
 }
@@ -806,10 +833,37 @@ fmt.Fprintf(os.Stderr, "@@@ Copy %q => %q\n", partName, tmpname)
 			rr.SetWrittenSize(value)
 			defer rr.Close()
 			_, err = io.Copy(w, rr)
+			if err != nil {
+				return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
+			}
 fmt.Fprintf(os.Stderr, "@@@ WRITTEN_SIZE = %d, READ_SIZE = %d\n", rr.GetWrittenSize(), rr.GetReadSize())
+			hash := rr.(*cachedFile).hash
+			if hash != nil {
+				var hash_size uintptr = uintptr(hash.Size())
+				ha := make([]byte, hash_size)
+				hb := hash.Sum(nil)
+
+				err = gf.LGetXattrCached(minio.PathJoin(n.gfarmctl.gfarmRootdir, partName), gfarmS3DigestKey, unsafe.Pointer(&ha[0]), &hash_size)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "@@@ LGetXattrCached ERROR: %q\n", err)
+				}
+
+fmt.Fprintf(os.Stderr, "@@@ READBACK_HASH = %x %x\n", hb, ha)
+
+				if bytes.Compare(hb, ha) != 0 {
+fmt.Fprintf(os.Stderr, "@@@ READBACK_HASH MISMATCH\n")
+					return objInfo, gfarmToObjectErr(ctx, io.ErrNoProgress, bucket, object)
+				} else {
+fmt.Fprintf(os.Stderr, "@@@ READBACK_HASH OK\n")
+				}
+			}
+
 		} else {
 			defer r.Close()
 			_, err = io.Copy(w, r)
+			if err != nil {
+				return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
+			}
 		}
 
 
@@ -817,7 +871,7 @@ fmt.Fprintf(os.Stderr, "@@@ WRITTEN_SIZE = %d, READ_SIZE = %d\n", rr.GetWrittenS
 
 	err = w.Close()
 	if err != nil {
-		return objInfo, err
+		return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 	}
 	err = gf.Rename(minio.PathJoin(n.gfarmctl.gfarmRootdir, tmpname), minio.PathJoin(n.gfarmctl.gfarmRootdir, name))
 
@@ -873,7 +927,7 @@ fmt.Fprintf(os.Stderr, "@@@ cleanupMultipartUploadDir os.Remove ERROR: %q\n", mi
 		}
 		if os.Remove(minio.PathJoin(n.cachectl.cacheRootdir, dirName)) != nil {
 fmt.Fprintf(os.Stderr, "@@@ cleanupMultipartUploadDir os.Remove ERROR: %q\n", minio.PathJoin(n.cachectl.cacheRootdir, dirName))
-				return err
+			return err
 		}
 	}
 
@@ -934,11 +988,16 @@ type CachedFileReadWriter interface {
 type cachedFile struct {
 	slower, faster FileReadWriter
 	c *cacheController
-	fasterWrittenSize, fasterReadSize int64
+	fasterWrittenSize, fasterReadSizeSoFar int64
+	hash hash.Hash
 }
 
 func (c *cacheController) NewCacheReadWriter(slower, faster FileReadWriter) (CachedFileReadWriter, error) {
-	return &cachedFile{slower, faster, c, 0, 0}, nil
+	var hash hash.Hash = nil
+	if c.enable_partfile_digest {
+		hash = md5.New()
+	}
+	return &cachedFile{slower, faster, c, 0, 0, hash}, nil
 }
 
 func (f *cachedFile) GetWrittenSize() int64 {
@@ -947,10 +1006,14 @@ func (f *cachedFile) GetWrittenSize() int64 {
 
 func (f *cachedFile) SetWrittenSize(n int64) () {
 	f.fasterWrittenSize = n
+	if n == 0 {
+		f.faster.Close()
+		f.faster = nil
+	}
 }
 
 func (f *cachedFile) GetReadSize() int64 {
-	return f.fasterReadSize
+	return f.fasterReadSizeSoFar
 }
 
 func (f *cachedFile) Close() error {
@@ -961,25 +1024,56 @@ func (f *cachedFile) Close() error {
 }
 
 func (f *cachedFile) Read(b []byte) (int, error) {
-/// XXX read until fasterTotal size
+	n, e := f.read(b)
+	if f.hash != nil {
+		io.Copy(f.hash, bytes.NewReader(b[:n]))		// ignore error
+	}
+	return n, e
+}
+
+func (f *cachedFile) read(b []byte) (int, error) {
 	if f.faster != nil {
 		n, e := f.faster.Read(b)
-if f.fasterWrittenSize < f.fasterReadSize + int64(n) {
-	fmt.Fprintf(os.Stderr, "@@@ chop trailing garbage Written %d have Read %d this time read %d new seek point%d\n", f.fasterWrittenSize, f.fasterReadSize, int64(n), f.fasterReadSize + int64(n))
-} else if f.fasterWrittenSize == f.fasterReadSize + int64(n) {
-	fmt.Fprintf(os.Stderr, "@@@ JUST EOF Written %d have Read %d this time read %d new seek point%d\n", f.fasterWrittenSize, f.fasterReadSize, int64(n), f.fasterReadSize + int64(n))
-}
-		if e == nil {
-			f.fasterReadSize += int64(n)
-			return n, e
-		} else if e != io.EOF {
-			f.fasterReadSize += int64(n)
+
+		if e != nil && e != io.EOF {
 			return n, e
 		}
-		// reached EOF on faster.
-		f.faster.Close()
-		f.faster = nil
-		// FALLTHRU
+
+		newReadSize := f.fasterReadSizeSoFar + int64(n)
+
+		if newReadSize >= f.fasterWrittenSize {
+			/* e == nil || e == io.EOF */
+			if newReadSize == f.fasterWrittenSize {
+				fmt.Fprintf(os.Stderr, "@@@ JUST READ DONE\n")
+				// do nothing
+			} else {
+				fmt.Fprintf(os.Stderr, "@@@ READING BEYOND WRITTEN SIZE\n")
+				// do nothing
+			}
+			n = int(f.fasterWrittenSize - f.fasterReadSizeSoFar)
+			f.faster.Close()
+			f.faster = nil
+			if n == 0 {
+				fmt.Fprintf(os.Stderr, "@@@ SHOULD NOT HAPPEN\n")
+				return 0, io.ErrUnexpectedEOF
+			}
+			return n, nil
+		}
+
+		/* newReadSize < f.fasterWrittenSize */
+
+		if e == io.EOF {
+			fmt.Fprintf(os.Stderr, "@@@ UNEXPECTED EOF\n")
+			f.faster.Close()
+			f.faster = nil
+			return 0, io.ErrUnexpectedEOF
+		}
+
+		/* e == nil */
+
+		f.fasterReadSizeSoFar = newReadSize
+
+		return n, nil
 	}
 	return f.slower.Read(b)
 }
@@ -987,6 +1081,9 @@ if f.fasterWrittenSize < f.fasterReadSize + int64(n) {
 func (f *cachedFile) Write(b []byte) (int, error) {
 	//var n int
 	//var e error
+	if f.hash != nil {
+		io.Copy(f.hash, bytes.NewReader(b))	// ignore error
+	}
 	if f.faster != nil {
 		n := len(b)
 		if f.c.fasterTotal + int64(n) < f.c.fasterLimit {
