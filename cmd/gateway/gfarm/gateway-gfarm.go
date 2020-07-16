@@ -234,7 +234,6 @@ fmt.Fprintf(os.Stderr, "@@@ args[%d] = %q\n", i, s)
 	}
 
 	gfarmHomedir := minio.PathJoin(gfarmSharedDir, gfarmHomedirName) 
-gfarmHomedir := minio.PathJoin(gfarmSharedDir, gfarmHomedirName) 
 
 	cacheRootdir = strings.TrimSuffix(cacheRootdir, gfarmSeparator)
 
