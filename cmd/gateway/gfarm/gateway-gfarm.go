@@ -1,23 +1,14 @@
 /*
  *
- * gfarmSeparator を concatenate するタイミング
+ * gfarmSeparator を concatenate するタイミング (確認済み)
  *
- * pathが、"gfarm:///" で始まっていても動くはず 確認完了
  *
- * 旧ルール  n.gfarmctl.gfarmHomedirを先頭にJoin  iff  gfarmClinet.[A-Z] の第1引数
- *
- * 旧ルール 移行完了
- * gf.大文字 <=> 第一引数 にgfarmHomedirが結合されている
- *
- * 新ルール 移行完了
  * gf.大文字 <=> 第一引数 は、名前 がgfarm_url_で始まる 変数
 /gf\.[A-Z]
 /(gfarm_url_
  * &&
- * gfarm_url_で始まる 変数 には、gfarmHomedirをappend する
+ * gfarm_url_で始まる 変数 には、n.gfarm_url_PathJoin を使用する
 /gfarm_url_[a-zA-Z :]*=
- *
- * n.gfarm_url_PathJoin を使用する
  *
  *
  * os.大文字 <=> 第一引数 は、名前 が gfarm_cache_で始まる 変数
@@ -27,10 +18,9 @@
 /os\.[A-Z][a-zA-Z_]*(gfarm_url
 /(gfarm_cache
  * &&
- * gfarm_cache_で始まる 変数 には、cacheRootdirをappend する
+ * gfarm_cache_で始まる 変数 には、n.gfarm_cache_PathJoin を使用する
 /gfarm_cache_[a-zA-Z :]*=
  *
- * n.gfarm_cache_PathJoin を使用する
  *
  * gfarmObjectsのメソッドのうち
  * 大文字 で 始まる メソッド
@@ -68,10 +58,10 @@ package gfarm
 import (
 	"bytes"
 	"context"
-        "crypto/md5"
+	"crypto/md5"
 	"errors"
 	"fmt"
-        "hash"
+	"hash"
 	"io"
 	"io/ioutil"
 //	"net"
@@ -107,10 +97,10 @@ const (
 	gfarmS3DigestKey = "user.gfarms3.part_digest"
 	gfarmSeparator = minio.SlashSeparator
 
-	gfarmCachePathEnvVar        = "MINIO_GFARMS3_CACHEDIR"
-	gfarmCacheSizeEnvVar        = "MINIO_GFARMS3_CACHEDIR_SIZE_MB"
+	gfarmCachePathEnvVar = "MINIO_GFARMS3_CACHEDIR"
+	gfarmCacheSizeEnvVar = "MINIO_GFARMS3_CACHEDIR_SIZE_MB"
 
-	gfarmPartfileDigestEnvVar   = "GFARMS3_PARTFILE_DIGEST"
+	gfarmPartfileDigestEnvVar = "GFARMS3_PARTFILE_DIGEST"
 
 	gfarmDefaultCacheSize = 16 * humanize.MiByte
 )
@@ -214,16 +204,37 @@ fmt.Fprintf(os.Stderr, "@@@ args[%d] = %q\n", i, s)
 	}
 
 	gfarmScheme := ""
-//	gfarmUsername := g.args[0]
 	gfarmHomedirName := g.args[0]
-//	gfarmRootdir := g.args[1]
 	gfarmSharedDir := g.args[1]
-//	gfarmSharedDir := g.args[2]
 	gfarmSharedVirtualName := g.args[2]
-// 
-// gfarm:///...../shared/              -- SharedDir
-//                      /hpci0000001   -- HomedirName
-// "sss"                               -- SharedVirtualName
+
+//       gfarmHomedirName        "hpci005858"
+//       gfarmSharedDir          "gfarm:///shared"
+//       gfarmSharedVirtualName  "sss"
+//
+//    Gfarm                       -- S3 API
+//    /shared                     -- アクセス不可
+//    |-- hpci005858              -- バケット置き場 "s3://"
+//    |   |-- .minio.sys          -- 不可視
+//    |   |-- mybucket            -- バケット       "s3://mybucket"
+//    |   `-- sss                 -- 仮想バケット
+//    |       `-- hpci001971      -- プレフィックス "s3://sss/hpci001971"
+//    |       .   |-- .minio.sys  -- 不可視
+//    |       .   `-- bucket1     -- プレフィックス "s3://sss/hpci001971/bucket1"
+//    |       .   .   `-- object1 -- オブジェクト
+//    |       .    .. (bucket2)   -- bucket2はhpci001971直下のリストには現れない
+//    |        .. (hpci001970)    -- hpci001970はsss直下のリストには現れない
+//    |
+//    |-- hpci001971
+//    |   |-- .minio.sys
+//    |   |-- bucket1              -- ACLを用いてhpci005858にアクセスを許可
+//    |   |   `-- object1
+//    |   `-- bucket2              -- bucket2は公開しない
+//    `-- hpci001970
+//        |-- .minio.sys
+//        `-- bucket3              -- bucket3は公開しない
+
+
 	cacheRootdir := env.Get(gfarmCachePathEnvVar, "")
 	cacheCapacity := getCacheSizeFromEnv(gfarmCacheSizeEnvVar, strconv.Itoa(gfarmDefaultCacheSize / humanize.MiByte))
 
@@ -233,7 +244,7 @@ fmt.Fprintf(os.Stderr, "@@@ args[%d] = %q\n", i, s)
 		gfarmSharedDir = gfarmSharedDir[len(constGfarmScheme):]
 	}
 
-	gfarmHomedir := minio.PathJoin(gfarmSharedDir, gfarmHomedirName) 
+	gfarmHomedir := minio.PathJoin(gfarmSharedDir, gfarmHomedirName)
 
 	cacheRootdir = strings.TrimSuffix(cacheRootdir, gfarmSeparator)
 
@@ -329,7 +340,7 @@ fmt.Fprintf(os.Stderr, "@@@ Total:%d  Used:%d  Available:%d\n", sinfo.Total[0]/1
 }
 
 type gfarmController struct {
-	gfarmScheme, gfarmSharedDir, gfarmHomedir, 
+	gfarmScheme, gfarmSharedDir, gfarmHomedir,
 	gfarmSharedVirtualName, gfarmSharedVirtualNamePath, gfarmHomedirName string
 }
 

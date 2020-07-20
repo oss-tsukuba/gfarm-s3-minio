@@ -1,7 +1,6 @@
 package gfarmClient
 
-// #cgo CFLAGS: -g -Wall -I/usr/local/include
-// #cgo LDFLAGS: -L/usr/local/lib -lgfarm -Wl,-rpath,/usr/local/lib
+// #cgo pkg-config: gfarm-2.7
 // #include <sys/statvfs.h>
 // #include <stdlib.h>
 // #include <gfarm/gfarm.h>
@@ -186,7 +185,7 @@ func ReadDir(dirname string) ([]FileInfo, error) {
 	var d C.GFS_Dir
 	var entry *C.struct_gfs_dirent
 	var r []FileInfo
-        err := gfs_opendir_caching(dirname, &d)
+	err := gfs_opendir_caching(dirname, &d)
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +209,7 @@ func ReadDir(dirname string) ([]FileInfo, error) {
 		}
 		fi := FileInfo{basename, sb.st_size, sb.st_mode, sb.st_mtimespec}
 		r = append(r, fi)
-        }
+	}
 	return r, nil
 }
 
@@ -235,8 +234,8 @@ func (r FileInfo) IsDir() bool {
 }
 
 type FsInfo struct {
-        Used, Total, Available uint64
-} 
+	Used, Total, Available uint64
+}
 
 func StatFs() (FsInfo, error) {
 	var buf C.struct_statvfs
@@ -393,7 +392,7 @@ func gfs_mkdir_p(path string, mode os.FileMode, lv int) error {
 func gfs_opendir_caching(path string, d *C.GFS_Dir) error {
 	cpath := C.CString(path)
 	defer C.free(unsafe.Pointer(cpath))
-        return gfCheckError(C.gfs_opendir_caching(cpath, (*C.GFS_Dir)(unsafe.Pointer(d))))
+	return gfCheckError(C.gfs_opendir_caching(cpath, (*C.GFS_Dir)(unsafe.Pointer(d))))
 }
 
 func gfs_readdir(d C.GFS_Dir, entry **C.struct_gfs_dirent) error {
@@ -401,7 +400,7 @@ func gfs_readdir(d C.GFS_Dir, entry **C.struct_gfs_dirent) error {
 }
 
 func gfs_closedir(d C.GFS_Dir) error {
-        return gfCheckError(C.gfs_closedir(d))
+	return gfCheckError(C.gfs_closedir(d))
 }
 
 func gfs_hook_open_flags_gfarmize(open_flags int) C.int {
@@ -450,7 +449,7 @@ func uncache_parent(path string) () {
 //func gfs_stat_cache_expiration_set() () { }
 
 func gfs_statfs(buf *C.struct_statvfs) error {
-        var used, avail, files C.gfarm_off_t
+	var used, avail, files C.gfarm_off_t
 
 	err := gfCheckError(C.gfs_statfs(&used, &avail, &files))
 	if err != nil {
