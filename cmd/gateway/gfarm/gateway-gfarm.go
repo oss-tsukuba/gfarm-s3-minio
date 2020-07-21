@@ -859,11 +859,28 @@ defer fmt.Fprintf(os.Stderr, "@@@ PutObjectPart EXIT bucket:%q object:%q uploadI
 	}
 
 	partName := minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID, fmt.Sprintf("%05d", partID))
-	gfarm_url_partName := n.gfarm_url_PathJoin(partName)
-	w, err := gf.OpenFile(gfarm_url_partName, os.O_WRONLY | os.O_CREATE | os.O_TRUNC, os.FileMode(0644))
+	err = n.copyToCachedFile(ctx, bucket, object, r, partName)
 	if err != nil {
 		return info, gfarmToObjectErr(ctx, err, bucket, object, uploadID)
 	}
+
+	info.PartNumber = partID
+	info.ETag = r.MD5CurrentHexString()
+	info.LastModified = minio.UTCNow()
+	info.Size = r.Reader.Size()
+
+fmt.Fprintf(os.Stderr, "@@@ INFO_HASH = %q\n", info.ETag)
+
+	return info, nil
+}
+
+func (n *gfarmObjects) copyToCachedFile(ctx context.Context, bucket, object string, r *minio.PutObjReader, partName string) error {
+	gfarm_url_partName := n.gfarm_url_PathJoin(partName)
+	w, err := gf.OpenFile(gfarm_url_partName, os.O_WRONLY | os.O_CREATE | os.O_TRUNC, os.FileMode(0644))
+	if err != nil {
+		return err
+	}
+	defer func() { if w != nil { w.Close() } }()
 	//defer w.Close()
 
 	if n.cachectl != nil {
@@ -879,18 +896,20 @@ defer fmt.Fprintf(os.Stderr, "@@@ PutObjectPart EXIT bucket:%q object:%q uploadI
 		gfarm_cache_partName := n.gfarm_cache_PathJoin(partName)
 		w_cache, err := os.OpenFile(gfarm_cache_partName, os.O_WRONLY | os.O_CREATE | os.O_TRUNC, os.FileMode(0644))
 		if err != nil {
-			return info, gfarmToObjectErr(ctx, err, bucket, object, uploadID)
+			//w.Close()	//!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+			return err
 		}
 		//defer w_cache.Close()
-		wr, err := n.cachectl.NewCacheReadWriter(w, w_cache)
-		defer wr.Close()
+		ww, err := n.cachectl.NewCacheReadWriter(w, w_cache)
+		defer ww.Close()
+		w = nil
 
-		_, err = io.Copy(wr, r.Reader)
+		_, err = io.Copy(ww, r.Reader)
 		if err != nil {
-			return info, gfarmToObjectErr(ctx, err, bucket, object, uploadID)
+			return err
 		}
 
-		value = wr.GetWrittenSize()
+		value = ww.GetWrittenSize()
 //fmt.Fprintf(os.Stderr, "@@@ LSetXattr %s = %d (%d)\n", gfarmS3OffsetKey, value, unsafe.Sizeof(value))
 		//gfarm_url_partName := n.gfarm_url_PathJoin(partName)
 		err = gf.LSetXattr(gfarm_url_partName, gfarmS3OffsetKey, unsafe.Pointer(&value), unsafe.Sizeof(value), gf.GFS_XATTR_REPLACE)
@@ -898,7 +917,7 @@ defer fmt.Fprintf(os.Stderr, "@@@ PutObjectPart EXIT bucket:%q object:%q uploadI
 			fmt.Fprintf(os.Stderr, "@@@ LSetXattr ERROR: %q %q\n", gfarmS3OffsetKey, err)
 		}
 
-		hash := wr.(*cachedFile).hash
+		hash := ww.(*cachedFile).hash
 		if hash != nil {
 			var hash_size uintptr = uintptr(hash.Size())
 			ha := hash.Sum(nil)
@@ -911,21 +930,13 @@ fmt.Fprintf(os.Stderr, "@@@ WRITTERN_HASH = %x\n", ha)
 		}
 
 	} else {
-		defer w.Close()
+		//defer w.Close()
 		_, err = io.Copy(w, r.Reader)
 		if err != nil {
-			return info, gfarmToObjectErr(ctx, err, bucket, object, uploadID)
+			return err
 		}
 	}
-
-	info.PartNumber = partID
-	info.ETag = r.MD5CurrentHexString()
-	info.LastModified = minio.UTCNow()
-	info.Size = r.Reader.Size()
-
-fmt.Fprintf(os.Stderr, "@@@ INFO_HASH = %q\n", info.ETag)
-
-	return info, nil
+	return nil
 }
 
 func (n *gfarmObjects) CompleteMultipartUpload(ctx context.Context, bucket, object, uploadID string, parts []minio.CompletePart, opts minio.ObjectOptions) (objInfo minio.ObjectInfo, err error) {
@@ -957,68 +968,10 @@ defer fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload EXIT bucket:%q object:
 
 	for _, part := range parts {
 		partName := minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID, fmt.Sprintf("%05d", part.PartNumber))
-		gfarm_url_partName := n.gfarm_url_PathJoin(partName)
-		r, err := gf.OpenFile(gfarm_url_partName, os.O_RDONLY, os.FileMode(0644))
-fmt.Fprintf(os.Stderr, "@@@ Copy %q => %q\n", partName, tmpname)
+		err = n.copyFromCachedFile(ctx, bucket, object, w, partName)
 		if err != nil {
 			return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 		}
-		//defer r.Close()
-		if n.cachectl != nil {
-			gfarm_cache_partName := n.gfarm_cache_PathJoin(partName)
-			r_cache, err := os.OpenFile(gfarm_cache_partName, os.O_RDONLY, os.FileMode(0644))
-			if err != nil {
-				return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
-			}
-			//defer r_cache.Close()
-			var value int64
-			//var size uintptr
-			size := unsafe.Sizeof(value)
-			//gfarm_url_partName := n.gfarm_url_PathJoin(partName)
-			err = gf.LGetXattrCached(gfarm_url_partName, gfarmS3OffsetKey, unsafe.Pointer(&value), &size)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "@@@ LGetXattrCached ERROR: %q\n", err)
-			}
-//fmt.Fprintf(os.Stderr, "@@@ LGetXattrCached %s = %d (%d)\n", gfarmS3OffsetKey, value, unsafe.Sizeof(value))
-			rr, err := n.cachectl.NewCacheReadWriter(r, r_cache)
-			rr.SetWrittenSize(value)
-			defer rr.Close()
-			_, err = io.Copy(w, rr)
-			if err != nil {
-				return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
-			}
-fmt.Fprintf(os.Stderr, "@@@ WRITTEN_SIZE = %d, READ_SIZE = %d\n", rr.GetWrittenSize(), rr.GetReadSize())
-			hash := rr.(*cachedFile).hash
-			if hash != nil {
-				var hash_size uintptr = uintptr(hash.Size())
-				ha := make([]byte, hash_size)
-				hb := hash.Sum(nil)
-
-				//gfarm_url_partName := n.gfarm_url_PathJoin(partName)
-				err = gf.LGetXattrCached(gfarm_url_partName, gfarmS3DigestKey, unsafe.Pointer(&ha[0]), &hash_size)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "@@@ LGetXattrCached ERROR: %q\n", err)
-				}
-
-fmt.Fprintf(os.Stderr, "@@@ READBACK_HASH = %x %x\n", hb, ha)
-
-				if bytes.Compare(hb, ha) != 0 {
-fmt.Fprintf(os.Stderr, "@@@ READBACK_HASH MISMATCH\n")
-					return objInfo, gfarmToObjectErr(ctx, io.ErrNoProgress, bucket, object)
-				} else {
-fmt.Fprintf(os.Stderr, "@@@ READBACK_HASH OK\n")
-				}
-			}
-
-		} else {
-			defer r.Close()
-			_, err = io.Copy(w, r)
-			if err != nil {
-				return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
-			}
-		}
-
-
 	}
 
 	err = w.Close()
@@ -1053,6 +1006,73 @@ fmt.Fprintf(os.Stderr, "@@@ READBACK_HASH OK\n")
 		//AccTime: fi.AccessTime(),
 		AccTime: fi.ModTime(),
 	}, nil
+}
+
+func (n *gfarmObjects) copyFromCachedFile(ctx context.Context, bucket, object string, w *gf.File, partName string) error {
+	gfarm_url_partName := n.gfarm_url_PathJoin(partName)
+	r, err := gf.OpenFile(gfarm_url_partName, os.O_RDONLY, os.FileMode(0644))
+fmt.Fprintf(os.Stderr, "@@@ Copy %q => `w`\n", partName)
+	if err != nil {
+		return err
+	}
+	defer func() { if r != nil { r.Close() } }()
+	//defer r.Close()
+	if n.cachectl != nil {
+		gfarm_cache_partName := n.gfarm_cache_PathJoin(partName)
+		r_cache, err := os.OpenFile(gfarm_cache_partName, os.O_RDONLY, os.FileMode(0644))
+		if err != nil {
+			//r.Close()	//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+			return err
+		}
+		//defer r_cache.Close()
+		var value int64
+		//var size uintptr
+		size := unsafe.Sizeof(value)
+		//gfarm_url_partName := n.gfarm_url_PathJoin(partName)
+		err = gf.LGetXattrCached(gfarm_url_partName, gfarmS3OffsetKey, unsafe.Pointer(&value), &size)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "@@@ LGetXattrCached ERROR: %q\n", err)
+		}
+//fmt.Fprintf(os.Stderr, "@@@ LGetXattrCached %s = %d (%d)\n", gfarmS3OffsetKey, value, unsafe.Sizeof(value))
+		rr, err := n.cachectl.NewCacheReadWriter(r, r_cache)
+		rr.SetWrittenSize(value)
+		defer rr.Close()
+		r = nil
+		_, err = io.Copy(w, rr)
+		if err != nil {
+			return err
+		}
+fmt.Fprintf(os.Stderr, "@@@ WRITTEN_SIZE = %d, READ_SIZE = %d\n", rr.GetWrittenSize(), rr.GetReadSize())
+		hash := rr.(*cachedFile).hash
+		if hash != nil {
+			var hash_size uintptr = uintptr(hash.Size())
+			ha := make([]byte, hash_size)
+			hb := hash.Sum(nil)
+
+			//gfarm_url_partName := n.gfarm_url_PathJoin(partName)
+			err = gf.LGetXattrCached(gfarm_url_partName, gfarmS3DigestKey, unsafe.Pointer(&ha[0]), &hash_size)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "@@@ LGetXattrCached ERROR: %q\n", err)
+			}
+
+fmt.Fprintf(os.Stderr, "@@@ READBACK_HASH = %x %x\n", hb, ha)
+
+			if bytes.Compare(hb, ha) != 0 {
+fmt.Fprintf(os.Stderr, "@@@ READBACK_HASH MISMATCH\n")
+				return io.ErrNoProgress
+			} else {
+fmt.Fprintf(os.Stderr, "@@@ READBACK_HASH OK\n")
+			}
+		}
+
+	} else {
+		//defer r.Close()
+		_, err = io.Copy(w, r)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (n *gfarmObjects) AbortMultipartUpload(ctx context.Context, bucket, object, uploadID string) (err error) {
