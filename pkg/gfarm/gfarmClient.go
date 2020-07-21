@@ -4,10 +4,21 @@ package gfarmClient
 // #include <sys/statvfs.h>
 // #include <stdlib.h>
 // #include <gfarm/gfarm.h>
-// inline int gfarm_s_isdir(gfarm_mode_t m) { return GFARM_S_ISDIR(m); }
-// inline void gflog_debug1(int msg_no, const char *format) { gflog_debug(msg_no, format); }
-// inline void gflog_debug2(int msg_no, const char *format, const char *a2) { gflog_debug(msg_no, format, a2); }
-// inline void gflog_debug3(int msg_no, const char *format, const char *a2, char const *a3) { gflog_debug(msg_no, format, a2, a3); }
+// inline int gfarm_s_isdir(gfarm_mode_t m) \
+//	{ return GFARM_S_ISDIR(m); }
+// #define three(name) \
+// inline void name ## 1(int msg_no, const char *format) \
+// 	{ name(msg_no, format); } \
+// inline void name ## 2(int msg_no, const char *format, const char *a2) \
+// 	{ name(msg_no, format, a2); } \
+// inline void name ## 3(int msg_no, const char *format, const char *a2, char const *a3) \
+// 	{ name(msg_no, format, a2, a3); }
+// three(gflog_debug)
+// three(gflog_info)
+// three(gflog_warning)
+// three(gflog_error)
+// three(gflog_fatal)
+// #undef three
 import "C"
 
 import (
@@ -69,7 +80,7 @@ func OpenFile(path string, flags int, perm os.FileMode) (*File, error) {
 	var gf C.GFS_File
 	var err error
 
-gflog_debug(GFARM_MSG_UNFIXED, "openFile")
+gflog_warning(GFARM_MSG_UNFIXED, "openFile")
 
 	if (flags & os.O_CREATE) != 0 {
 		err = gfs_pio_create(path, flags, perm, &gf)
@@ -268,6 +279,7 @@ func gfCheckError(code C.int) error {
 }
 
 func Gfarm_initialize() error {
+//void gflog_initialize(void)
 	syslog_priority := gflog_syslog_name_to_priority(GFARM2FS_SYSLOG_PRIORITY_DEBUG)
 	gflog_set_priority_level(syslog_priority)
 	syslog_facility := gflog_syslog_name_to_facility(GFARM2FS_SYSLOG_FACILITY_DEFAULT)
@@ -276,6 +288,7 @@ func Gfarm_initialize() error {
 }
 
 func Gfarm_terminate() error {
+//void gflog_terminate(void)
 	return gfCheckError(C.gfarm_terminate())
 }
 
@@ -471,9 +484,6 @@ func gfs_statfs(buf *C.struct_statvfs) error {
 	return nil
 }
 
-//void gflog_initialize(void)
-//void gflog_terminate(void)
-
 const (
 	GFARM2FS_SYSLOG_PRIORITY_DEBUG = "debug"
 	GFARM2FS_SYSLOG_FACILITY_DEFAULT = "local0"
@@ -500,25 +510,73 @@ fmt.Fprintf(os.Stderr, "@@@ gflog_syslog_open flags:%d priority:%d\n", int(syslo
 	C.gflog_syslog_open(syslog_flags, syslog_priority)
 }
 
-func gflog_debug(msg_no C.int, format string) () {
-	cformat := C.CString(format)
-	defer C.free(unsafe.Pointer(cformat))
-fmt.Fprintf(os.Stderr, "@@@ gflog_debug %q\n", format)
-	C.gflog_debug1(msg_no, cformat)
-}
-
-func gflog_vdebug(msg_no C.int, format ...string) () {
+func gflog_debug(msg_no C.int, format ...string) () {
 fmt.Fprintf(os.Stderr, "@@@ gflog_debug %v\n", format)
 	cformat := make([]*C.char, len(format))
 	for i, _ := range format {
 		cformat[i] = C.CString(format[i])
 		defer C.free(unsafe.Pointer(cformat[i]))
 	}
-
 	switch len(cformat) {
 	case 1: C.gflog_debug1(msg_no, cformat[0])
 	case 2: C.gflog_debug2(msg_no, cformat[0], cformat[1])
 	case 3: C.gflog_debug3(msg_no, cformat[0], cformat[1], cformat[2])
+	}
+}
+
+func gflog_info(msg_no C.int, format ...string) () {
+fmt.Fprintf(os.Stderr, "@@@ gflog_info %v\n", format)
+	cformat := make([]*C.char, len(format))
+	for i, _ := range format {
+		cformat[i] = C.CString(format[i])
+		defer C.free(unsafe.Pointer(cformat[i]))
+	}
+	switch len(cformat) {
+	case 1: C.gflog_info1(msg_no, cformat[0])
+	case 2: C.gflog_info2(msg_no, cformat[0], cformat[1])
+	case 3: C.gflog_info3(msg_no, cformat[0], cformat[1], cformat[2])
+	}
+}
+
+func gflog_warning(msg_no C.int, format ...string) () {
+fmt.Fprintf(os.Stderr, "@@@ gflog_warning %v\n", format)
+	cformat := make([]*C.char, len(format))
+	for i, _ := range format {
+		cformat[i] = C.CString(format[i])
+		defer C.free(unsafe.Pointer(cformat[i]))
+	}
+	switch len(cformat) {
+	case 1: C.gflog_warning1(msg_no, cformat[0])
+	case 2: C.gflog_warning2(msg_no, cformat[0], cformat[1])
+	case 3: C.gflog_warning3(msg_no, cformat[0], cformat[1], cformat[2])
+	}
+}
+
+func gflog_error(msg_no C.int, format ...string) () {
+fmt.Fprintf(os.Stderr, "@@@ gflog_error %v\n", format)
+	cformat := make([]*C.char, len(format))
+	for i, _ := range format {
+		cformat[i] = C.CString(format[i])
+		defer C.free(unsafe.Pointer(cformat[i]))
+	}
+	switch len(cformat) {
+	case 1: C.gflog_error1(msg_no, cformat[0])
+	case 2: C.gflog_error2(msg_no, cformat[0], cformat[1])
+	case 3: C.gflog_error3(msg_no, cformat[0], cformat[1], cformat[2])
+	}
+}
+
+func gflog_fatal(msg_no C.int, format ...string) () {
+fmt.Fprintf(os.Stderr, "@@@ gflog_fatal %v\n", format)
+	cformat := make([]*C.char, len(format))
+	for i, _ := range format {
+		cformat[i] = C.CString(format[i])
+		defer C.free(unsafe.Pointer(cformat[i]))
+	}
+	switch len(cformat) {
+	case 1: C.gflog_fatal1(msg_no, cformat[0])
+	case 2: C.gflog_fatal2(msg_no, cformat[0], cformat[1])
+	case 3: C.gflog_fatal3(msg_no, cformat[0], cformat[1], cformat[2])
 	}
 }
 
