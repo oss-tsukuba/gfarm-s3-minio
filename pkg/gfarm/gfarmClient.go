@@ -280,9 +280,9 @@ func gfCheckError(code C.int) error {
 
 func Gfarm_initialize() error {
 //void gflog_initialize(void)
-	syslog_priority := gflog_syslog_name_to_priority(GFARM2FS_SYSLOG_PRIORITY_DEBUG)
+	syslog_priority := gflog_syslog_name_to_priority(GFARM_S3_SYSLOG_PRIORITY_DEBUG)
 	gflog_set_priority_level(syslog_priority)
-	syslog_facility := gflog_syslog_name_to_facility(GFARM2FS_SYSLOG_FACILITY_DEFAULT)
+	syslog_facility := gflog_syslog_name_to_facility(GFARM_S3_SYSLOG_FACILITY_DEFAULT)
 	gflog_syslog_open(C.LOG_PID, syslog_facility)
 	return gfCheckError(C.gfarm_initialize((*C.int)(C.NULL), (***C.char)(C.NULL)))
 }
@@ -485,8 +485,8 @@ func gfs_statfs(buf *C.struct_statvfs) error {
 }
 
 const (
-	GFARM2FS_SYSLOG_PRIORITY_DEBUG = "debug"
-	GFARM2FS_SYSLOG_FACILITY_DEFAULT = "local0"
+	GFARM_S3_SYSLOG_PRIORITY_DEBUG = "debug"
+	GFARM_S3_SYSLOG_FACILITY_DEFAULT = "local0"
 )
 
 func gflog_syslog_name_to_priority(name string) C.int {
