@@ -179,9 +179,10 @@ func (n *gfarmObjects) gfarm_url_PathJoin(pathComponents ...string) string {
 	var gfarmPath string
 	s3path := minio.PathJoin(pathComponents...)
 	if strings.HasPrefix(s3path, n.gfarmctl.gfarmSharedVirtualNamePath) {
-		gfarmPath = minio.PathJoin(n.gfarmctl.gfarmSharedDir, s3path[len(n.gfarmctl.gfarmSharedVirtualNamePath):])
+		gfarmPath = minio.PathJoin(n.gfarmctl.gfarmSharedDir, "..", s3path[len(n.gfarmctl.gfarmSharedVirtualNamePath):])
 	} else {
-		gfarmPath = minio.PathJoin(n.gfarmctl.gfarmHomedir, s3path)
+		//XXXXgfarmPath = minio.PathJoin(n.gfarmctl.gfarmHomedir, s3path)
+		gfarmPath = minio.PathJoin(n.gfarmctl.gfarmSharedDir, s3path)
 	}
 	result := n.gfarmctl.gfarmScheme + gfarmPath
 	for _, v := range pathComponents {
@@ -204,12 +205,13 @@ fmt.Fprintf(os.Stderr, "@@@ args[%d] = %q\n", i, s)
 	}
 
 	gfarmScheme := ""
-	gfarmHomedirName := g.args[0]
-	gfarmSharedDir := g.args[1]
-	gfarmSharedVirtualName := g.args[2]
+//	gfarmHomedirName := g.args[0]
+	gfarmSharedDir := g.args[0]
+	gfarmSharedVirtualName := g.args[1]
 
-//       gfarmHomedirName        "hpci005858"
-//       gfarmSharedDir          "gfarm:///shared"
+//       XXXXgfarmHomedirName        "hpci005858"
+//       XXXXgfarmSharedDir          "gfarm:///shared"
+//       gfarmSharedDir          "gfarm:///shared/hpci005858"
 //       gfarmSharedVirtualName  "sss"
 //
 //    Gfarm                       -- S3 API
@@ -244,7 +246,8 @@ fmt.Fprintf(os.Stderr, "@@@ args[%d] = %q\n", i, s)
 		gfarmSharedDir = gfarmSharedDir[len(constGfarmScheme):]
 	}
 
-	gfarmHomedir := minio.PathJoin(gfarmSharedDir, gfarmHomedirName)
+	//XXXXgfarmHomedir := minio.PathJoin(gfarmSharedDir, gfarmHomedirName)
+	//XXXXgfarmHomedir == gfarmSharedDir
 
 	cacheRootdir = strings.TrimSuffix(cacheRootdir, gfarmSeparator)
 
@@ -252,10 +255,10 @@ fmt.Fprintf(os.Stderr, "@@@ args[%d] = %q\n", i, s)
 
 fmt.Fprintf(os.Stderr, "@@@ gfarmScheme = %q\n", gfarmScheme)
 fmt.Fprintf(os.Stderr, "@@@ gfarmSharedDir = %q\n", gfarmSharedDir)
-fmt.Fprintf(os.Stderr, "@@@ gfarmHomedir = %q\n", gfarmHomedir)
-fmt.Fprintf(os.Stderr, "@@@ gfarmSharedVirtualName = %q\n", gfarmSharedVirtualName)
+//XXXXfmt.Fprintf(os.Stderr, "@@@ gfarmHomedir = %q\n", gfarmHomedir)
+//XXXXfmt.Fprintf(os.Stderr, "@@@ gfarmSharedVirtualName = %q\n", gfarmSharedVirtualName)
 fmt.Fprintf(os.Stderr, "@@@ gfarmSharedVirtualNamePath = %q\n", gfarmSharedVirtualNamePath)
-fmt.Fprintf(os.Stderr, "@@@ gfarmHomedirName = %q\n", gfarmHomedirName)
+//XXXXfmt.Fprintf(os.Stderr, "@@@ gfarmHomedirName = %q\n", gfarmHomedirName)
 fmt.Fprintf(os.Stderr, "@@@ cacheRootdir = %q\n", cacheRootdir)
 fmt.Fprintf(os.Stderr, "@@@ cacheCapacity = %d\n", cacheCapacity)
 
@@ -264,7 +267,8 @@ fmt.Fprintf(os.Stderr, "@@@ cacheCapacity = %d\n", cacheCapacity)
 		return nil, err
 	}
 
-	gfarmctl := &gfarmController{gfarmScheme, gfarmSharedDir, gfarmHomedir, gfarmSharedVirtualName, gfarmSharedVirtualNamePath, gfarmHomedirName}
+	//XXXXgfarmctl := &gfarmController{gfarmScheme, gfarmSharedDir, gfarmHomedir, gfarmSharedVirtualName, gfarmSharedVirtualNamePath, gfarmHomedirName}
+	gfarmctl := &gfarmController{gfarmScheme, gfarmSharedDir, gfarmSharedVirtualNamePath}
 	var cachectl *cacheController = nil
 	if cacheRootdir != "" {
 		partfile_digest := env.Get(gfarmPartfileDigestEnvVar, "")
@@ -340,8 +344,9 @@ fmt.Fprintf(os.Stderr, "@@@ Total:%d  Used:%d  Available:%d\n", sinfo.Total[0]/1
 }
 
 type gfarmController struct {
-	gfarmScheme, gfarmSharedDir, gfarmHomedir,
-	gfarmSharedVirtualName, gfarmSharedVirtualNamePath, gfarmHomedirName string
+	//XXXXgfarmScheme, gfarmSharedDir, gfarmHomedir,
+	//XXXXgfarmSharedVirtualName, gfarmSharedVirtualNamePath, gfarmHomedirName string
+	gfarmScheme, gfarmSharedDir, gfarmSharedVirtualNamePath string
 }
 
 type cacheController struct {
@@ -491,10 +496,10 @@ fmt.Fprintf(os.Stderr, "@@@ listDirFactory fi.Name() = %q\n", fi.Name())
 fmt.Fprintf(os.Stderr, "@@@ listDirFactory RESERVED %q\n", fi.Name())
 				continue
 			}
-			if bucket == n.gfarmctl.gfarmSharedVirtualName && fi.Name() == n.gfarmctl.gfarmHomedirName {
-fmt.Fprintf(os.Stderr, "@@@ listDirFactory EXCLUDE %q\n", fi.Name())
-				continue
-			}
+//XXXX			if bucket == n.gfarmctl.gfarmSharedVirtualName && fi.Name() == n.gfarmctl.gfarmHomedirName {
+//XXXXfmt.Fprintf(os.Stderr, "@@@ listDirFactory EXCLUDE %q\n", fi.Name())
+//XXXX				continue
+//XXXX			}
 			if fi.IsDir() {
 				entries = append(entries, fi.Name() + gfarmSeparator)
 			} else {
