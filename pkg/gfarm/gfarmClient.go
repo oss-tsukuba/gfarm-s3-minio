@@ -1,6 +1,7 @@
 package gfarmClient
 
 // #cgo pkg-config: gfarm-2.7
+// #include <errno.h>
 // #include <sys/statvfs.h>
 // #include <stdlib.h>
 // #include <gfarm/gfarm.h>
@@ -27,11 +28,11 @@ import (
 	"path"
 	"time"
 	"unsafe"
-	"fmt"
 )
 
 const (
 	o_accmode = os.O_RDONLY | os.O_WRONLY | os.O_RDWR
+	GFARM_MSG_UNFIXED = 4000000
 )
 
 type File struct {
@@ -79,8 +80,6 @@ func Stat(path string) (FileInfo, error) {
 func OpenFile(path string, flags int, perm os.FileMode) (*File, error) {
 	var gf C.GFS_File
 	var err error
-
-gflog_warning(GFARM_MSG_UNFIXED, "openFile")
 
 	if (flags & os.O_CREATE) != 0 {
 		err = gfs_pio_create(path, flags, perm, &gf)
@@ -185,7 +184,7 @@ func Mkdir(path string, perm os.FileMode) error {
 }
 
 func MkdirAll(path string, perm os.FileMode) error {
-	err := gfs_mkdir_p(path, perm, 0)
+	err := gfs_mkdir_p(path, perm)
 	if err != nil {
 		return nil
 	}
@@ -268,7 +267,11 @@ type gfError struct {
 }
 
 func (err gfError) Error() string {
-	return C.GoString(C.gfarm_error_string(C.int(err.code)))
+	return gfarm_error_string(err.code)
+}
+
+func gfarm_error_string(code int) string {
+	return C.GoString(C.gfarm_error_string(C.int(code)))
 }
 
 func gfCheckError(code C.int) error {
@@ -376,7 +379,11 @@ func gfarm_url_dir(path string) string {
 	return C.GoString(cparent)
 }
 
-func gfs_mkdir_p(path string, mode os.FileMode, lv int) error {
+func gfs_mkdir_p(path string, mode os.FileMode) error {
+	return gfCheckError(c_gfs_mkdir_p(path, mode, 0))
+}
+
+func c_gfs_mkdir_p(path string, mode os.FileMode, lv int) C.int {
 	var sb C.struct_gfs_stat
 	parent := gfarm_url_dir(path)
 
@@ -386,20 +393,20 @@ func gfs_mkdir_p(path string, mode os.FileMode, lv int) error {
 		if gfarm_s_isdir(sb.st_mode) {
 			// FALLTHRU
 		} else {
-			return &gfError{C.GFARM_ERR_NOT_A_DIRECTORY}
+			return C.GFARM_ERR_NOT_A_DIRECTORY
 		}
 	} else if err.(*gfError).code == C.GFARM_ERR_NO_SUCH_FILE_OR_DIRECTORY {
-		err = gfs_mkdir_p(parent, mode, lv + 1)
-		if err != nil {
-			return err
+		e := c_gfs_mkdir_p(parent, mode, lv + 1)
+		if e != C.GFARM_ERR_NO_ERROR {
+			return e
 		}
 	}
 	err = gfs_mkdir(path, mode)
 	if err != nil {
-		return err
+		return C.int(err.(*gfError).code)
 	}
 	uncache_parent(path)
-	return nil
+	return 0
 }
 
 func gfs_opendir_caching(path string, d *C.GFS_Dir) error {
@@ -506,12 +513,10 @@ func gflog_set_priority_level(syslog_priority C.int) () {
 }
 
 func gflog_syslog_open(syslog_flags, syslog_priority C.int) () {
-fmt.Fprintf(os.Stderr, "@@@ gflog_syslog_open flags:%d priority:%d\n", int(syslog_flags), int(syslog_priority))
 	C.gflog_syslog_open(syslog_flags, syslog_priority)
 }
 
 func gflog_debug(msg_no C.int, format ...string) () {
-fmt.Fprintf(os.Stderr, "@@@ gflog_debug %v\n", format)
 	cformat := make([]*C.char, len(format))
 	for i, _ := range format {
 		cformat[i] = C.CString(format[i])
@@ -525,7 +530,6 @@ fmt.Fprintf(os.Stderr, "@@@ gflog_debug %v\n", format)
 }
 
 func gflog_info(msg_no C.int, format ...string) () {
-fmt.Fprintf(os.Stderr, "@@@ gflog_info %v\n", format)
 	cformat := make([]*C.char, len(format))
 	for i, _ := range format {
 		cformat[i] = C.CString(format[i])
@@ -539,7 +543,6 @@ fmt.Fprintf(os.Stderr, "@@@ gflog_info %v\n", format)
 }
 
 func gflog_warning(msg_no C.int, format ...string) () {
-fmt.Fprintf(os.Stderr, "@@@ gflog_warning %v\n", format)
 	cformat := make([]*C.char, len(format))
 	for i, _ := range format {
 		cformat[i] = C.CString(format[i])
@@ -553,7 +556,6 @@ fmt.Fprintf(os.Stderr, "@@@ gflog_warning %v\n", format)
 }
 
 func gflog_error(msg_no C.int, format ...string) () {
-fmt.Fprintf(os.Stderr, "@@@ gflog_error %v\n", format)
 	cformat := make([]*C.char, len(format))
 	for i, _ := range format {
 		cformat[i] = C.CString(format[i])
@@ -567,7 +569,6 @@ fmt.Fprintf(os.Stderr, "@@@ gflog_error %v\n", format)
 }
 
 func gflog_fatal(msg_no C.int, format ...string) () {
-fmt.Fprintf(os.Stderr, "@@@ gflog_fatal %v\n", format)
 	cformat := make([]*C.char, len(format))
 	for i, _ := range format {
 		cformat[i] = C.CString(format[i])
@@ -580,8 +581,6 @@ fmt.Fprintf(os.Stderr, "@@@ gflog_fatal %v\n", format)
 	}
 }
 
-//C.GFS_XATTR_CREATE
-//C.GFS_XATTR_REPLACE
 const (
 	GFS_XATTR_CREATE = C.GFS_XATTR_CREATE
 	GFS_XATTR_REPLACE = C.GFS_XATTR_REPLACE
@@ -613,4 +612,47 @@ func gfs_lgetxattr_cached(path, name string, value unsafe.Pointer, sizep *C.size
 	defer C.free(unsafe.Pointer(cname))
 	return gfCheckError(C.gfs_lgetxattr_cached(cpath, cname, value, sizep))
 }
-//user.gfarms3.partsize
+
+const (
+	PATH_LEN_LIMIT = 200
+	syslog_fmt = "<%s:%s>%s: %s"
+	trunc_str = "(...)"
+	empty_str = ""
+)
+
+func CheckError(msgNo int, gfarm_opname, gfarm_funcname, gfarm_path string, err error) () {
+	var gfarm_e int
+	switch err.(type) {
+	case *gfError:
+		gfarm_e = err.(*gfError).code
+	default:
+		return
+	}
+	if (gfarm_e != int(C.GFARM_ERR_NO_ERROR)) {
+		ret_errno    := int(C.gfarm_error_to_errno(C.int(gfarm_e)))
+		path_len     := len(gfarm_path)
+		path_offset  := 0
+		path_prefix  := empty_str
+		if (path_len > PATH_LEN_LIMIT) {
+			path_offset = path_len - PATH_LEN_LIMIT;
+			path_prefix = trunc_str
+		}
+		switch {
+		case ret_errno == C.EINVAL:
+			gflog_error(C.int(msgNo), syslog_fmt, gfarm_opname,
+				gfarm_funcname, 
+				path_prefix + gfarm_path[path_offset:],
+				gfarm_error_string(gfarm_e))
+		case ret_errno != C.ENOENT:
+			gflog_info(C.int(msgNo), syslog_fmt, gfarm_opname,
+				gfarm_funcname, 
+				path_prefix + gfarm_path[path_offset:],
+				gfarm_error_string(gfarm_e))
+		default:
+			gflog_debug(C.int(msgNo), syslog_fmt, gfarm_opname,
+				gfarm_funcname, 
+				path_prefix + gfarm_path[path_offset:],
+				gfarm_error_string(gfarm_e))
+		}
+	}
+}
