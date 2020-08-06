@@ -1,6 +1,6 @@
 package gfarmClient
 
-// #cgo pkg-config: gfarm-2.7
+// #cgo pkg-config: gfarm
 // #include <errno.h>
 // #include <sys/statvfs.h>
 // #include <stdlib.h>
