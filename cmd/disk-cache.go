@@ -124,7 +124,6 @@ func (c *cacheObjects) updateMetadataIfChanged(ctx context.Context, dcache *disk
 
 // DeleteObject clears cache entry if backend delete operation succeeds
 func (c *cacheObjects) DeleteObject(ctx context.Context, bucket, object string) (err error) {
-fmt.Fprintf(os.Stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ cacheObjects DeleteObject %q %q\n", bucket, object)
 	if err = c.DeleteObjectFn(ctx, bucket, object); err != nil {
 		return
 	}
@@ -173,7 +172,6 @@ func (c *cacheObjects) incCacheStats(size int64) {
 }
 
 func (c *cacheObjects) GetObjectNInfo(ctx context.Context, bucket, object string, rs *HTTPRangeSpec, h http.Header, lockType LockType, opts ObjectOptions) (gr *GetObjectReader, err error) {
-fmt.Fprintf(os.Stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ cacheObjects GetObjectNInfo %q %q\n", bucket, object)
 	if c.isCacheExclude(bucket, object) || c.skipCache() {
 		return c.GetObjectNInfoFn(ctx, bucket, object, rs, h, lockType, opts)
 	}
@@ -328,7 +326,6 @@ fmt.Fprintf(os.Stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ cacheObjects GetO
 
 // Returns ObjectInfo from cache if available.
 func (c *cacheObjects) GetObjectInfo(ctx context.Context, bucket, object string, opts ObjectOptions) (ObjectInfo, error) {
-fmt.Fprintf(os.Stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ cacheObjects GetObjectInfo %q %q\n", bucket, object)
 	getObjectInfoFn := c.GetObjectInfoFn
 
 	if c.isCacheExclude(bucket, object) || c.skipCache() {
@@ -603,7 +600,6 @@ func (c *cacheObjects) migrateCacheFromV1toV2(ctx context.Context) {
 
 // PutObject - caches the uploaded object for single Put operations
 func (c *cacheObjects) PutObject(ctx context.Context, bucket, object string, r *PutObjReader, opts ObjectOptions) (objInfo ObjectInfo, err error) {
-fmt.Fprintf(os.Stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ cacheObjects PutObject %q %q\n", bucket, object)
 	putObjectFn := c.PutObjectFn
 	dcache, err := c.getCacheToLoc(ctx, bucket, object)
 	if err != nil {

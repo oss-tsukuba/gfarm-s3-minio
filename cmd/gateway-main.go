@@ -219,10 +219,8 @@ func StartGateway(ctx *cli.Context, gw Gateway) {
 	globalObjLayerMutex.Unlock()
 
 	signal.Notify(globalOSSignalCh, os.Interrupt, syscall.SIGTERM)
-//fmt.Fprintf(os.Stderr, "@@@ StartGateway: gw = %T %v\n", gw, gw)
 
 	newObject, err := gw.NewGatewayLayer(globalActiveCred)
-//fmt.Fprintf(os.Stderr, "@@@ StartGateway: gw.NewGatewayLayer => %T %v\n", newObject, newObject)
 	if err != nil {
 		// Stop watching for any certificate changes.
 		globalTLSCerts.Stop()
@@ -236,8 +234,6 @@ func StartGateway(ctx *cli.Context, gw Gateway) {
 	globalObjLayerMutex.Lock()
 	globalSafeMode = true
 	globalObjectAPI = newObject
-//fmt.Fprintf(os.Stderr, "@@@ StartGateway: newObject = %T %v\n", newObject, newObject)
-//fmt.Fprintf(os.Stderr, "@@@ StartGateway: globalObjectAPI = %T %v\n", globalObjectAPI, globalObjectAPI)
 	globalObjLayerMutex.Unlock()
 
 	// Migrate all backend configs to encrypted backend, also handles rotation as well.

@@ -34,8 +34,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-//	"os"
-//	"fmt"
 
 	"github.com/minio/minio-go/v6/pkg/s3utils"
 	xhttp "github.com/minio/minio/cmd/http"
@@ -375,8 +373,6 @@ func doesSignatureMatch(hashedPayload string, r *http.Request, region string, st
 
 	// Get canonical request.
 	canonicalRequest := getCanonicalRequest(extractedSignedHeaders, hashedPayload, queryStr, req.URL.Path, req.Method)
-
-//fmt.Fprintf(os.Stderr, "@@@ doesSignatureMatch: getCanonicalRequest(\n\t@@@extractedSignedHeaders=%q, \n\t@@@hashedPayload=%q, \n\t@@@queryStr=%q, \n\t@@@req.URL.Path=%q, \n\t@@@req.Method=%q) \n\t@@@=> %q\n", extractedSignedHeaders, hashedPayload, queryStr, req.URL.Path, req.Method, canonicalRequest)
 
 	// Get string to sign from canonical request.
 	stringToSign := getStringToSign(canonicalRequest, t, signV4Values.Credential.getScope())

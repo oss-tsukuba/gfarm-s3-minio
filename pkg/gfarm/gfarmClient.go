@@ -66,6 +66,15 @@ func IsExist(err error) bool {
 	}
 }
 
+func IsENOTEMPTY(err error) bool {
+	switch err.(type) {
+	case *gfError:
+		return err.(*gfError).code == C.GFARM_ERR_DIRECTORY_NOT_EMPTY
+	default:
+		return false
+	}
+}
+
 func Stat(path string) (FileInfo, error) {
 	var sb C.struct_gfs_stat
 

@@ -124,10 +124,8 @@ import (
 	"hash"
 	"io"
 	"io/ioutil"
-//	"net"
 	"net/http"
 	"os"
-//	"os/user"
 	"path"
 	"strconv"
 	"sort"
@@ -243,10 +241,6 @@ func (n *gfarmObjects) gfarm_url_PathJoin(pathComponents ...string) string {
 		gfarmPath = minio.PathJoin(n.gfarmctl.gfarmSharedDir, s3path)
 	}
 	result := n.gfarmctl.gfarmScheme + gfarmPath
-//for _, v := range pathComponents {
-//	fmt.Fprintf(os.Stderr, "@@@ gfarm_url_PathJoin    %q\n", v)
-//}
-//fmt.Fprintf(os.Stderr, "@@@ gfarm_url_PathJoin => %q\n", result)
 	return result
 }
 
@@ -273,12 +267,6 @@ func (g *GFARM) NewGatewayLayer(creds auth.Credentials) (minio.ObjectLayer, erro
 	cacheRootdir = strings.TrimSuffix(cacheRootdir, gfarmSeparator)
 
 	gfarmSharedVirtualNamePath := minio.PathJoin("/", gfarmSharedVirtualName)
-
-	fmt.Fprintf(os.Stderr, "@@@ gfarmScheme = %q\n", gfarmScheme)
-	fmt.Fprintf(os.Stderr, "@@@ gfarmSharedDir = %q\n", gfarmSharedDir)
-	fmt.Fprintf(os.Stderr, "@@@ gfarmSharedVirtualNamePath = %q\n", gfarmSharedVirtualNamePath)
-	fmt.Fprintf(os.Stderr, "@@@ cacheRootdir = %q\n", cacheRootdir)
-	fmt.Fprintf(os.Stderr, "@@@ cacheCapacity = %d\n", cacheCapacity)
 
 	err := gf.Gfarm_initialize()
 	if err != nil {
@@ -413,7 +401,8 @@ func gfarmToObjectErr(ctx context.Context, err error, params ...string) error {
 			return minio.PrefixAccessDenied{Bucket: bucket, Object: object}
 		}
 		return minio.BucketAlreadyOwnedByYou{Bucket: bucket}
-	case errors.Is(err, syscall.ENOTEMPTY):
+	case errors.Is(err, syscall.ENOTEMPTY) || gf.IsENOTEMPTY(err):
+fmt.Fprintf(os.Stderr, "@@@ errors.Is(err, syscall.ENOTEMPTY)\n");
 		if object != "" {
 			return minio.PrefixAccessDenied{Bucket: bucket, Object: object}
 		}
@@ -500,10 +489,12 @@ func (n *gfarmObjects) listDirFactory() minio.ListDirFunc {
 		gfarm_url_bucket_prefixDir := n.gfarm_url_PathJoin(gfarmSeparator, bucket, prefixDir)
 		fis, err := gf.ReadDir(gfarm_url_bucket_prefixDir)
 		if err != nil {
-			if os.IsNotExist(err) {
+			if os.IsNotExist(err) || gf.IsNotExist(err) {
 				err = nil
 			}
-			gf.CheckError(GFARM_MSG_UNFIXED, "listDirFactory", "ReadDir", gfarm_url_bucket_prefixDir, err)
+			if err != nil {
+				gf.CheckError(GFARM_MSG_UNFIXED, "listDirFactory", "ReadDir", gfarm_url_bucket_prefixDir, err)
+			}
 			logger.LogIf(minio.GlobalContext, err)
 			return
 		}
@@ -567,7 +558,7 @@ func (n *gfarmObjects) deleteObject(basePath, deletePath string) error {
 	// Attempt to remove path.
 	gfarm_url_deletePath := n.gfarm_url_PathJoin(deletePath)
 	if err := gf.Remove(gfarm_url_deletePath); err != nil {
-		if errors.Is(err, syscall.ENOTEMPTY) {
+		if errors.Is(err, syscall.ENOTEMPTY) || gf.IsENOTEMPTY(err) {
 			// Ignore errors if the directory is not empty. The server relies on
 			// this functionality, and sometimes uses recursion that should not
 			// error on parent directories.
@@ -684,7 +675,7 @@ func (n *gfarmObjects) isObjectDir(ctx context.Context, bucket, object string) b
 	gfarm_url_bucket_object := n.gfarm_url_PathJoin(gfarmSeparator, bucket, object)
 	fis, err := gf.ReadDir(gfarm_url_bucket_object)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if os.IsNotExist(err) || gf.IsNotExist(err) {
 			return false
 		}
 		gf.CheckError(GFARM_MSG_UNFIXED, "isObjectDir", "ReadDir", gfarm_url_bucket_object, err)

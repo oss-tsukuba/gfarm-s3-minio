@@ -161,7 +161,6 @@ func newAllSubsystems() {
 }
 
 func initSafeMode() (err error) {
-//fmt.Fprintf(os.Stderr, "@@@ initSafeMode\n")
 	newObject := newObjectLayerWithoutSafeModeFn()
 
 	// Make sure to hold lock for entire migration to avoid
