@@ -38,67 +38,64 @@ gfs_lgetxattr_cached	LGetXattrCached		copyFromCachedFile, cleanupMultipartUpload
 
 /*
  *
- * gfarmSeparator を concatenate するタイミング (確認済み)
+ * Hangarian rules for gfarm_url_ and gfarm_cache_
  *
  *
- * gf.大文字 <=> 第一引数 は、名前 がgfarm_url_で始まる 変数
+ * gf.Capital <=> first argument shall be a variable that name begins with `gfarm_url_'
 /gf\.[A-Z]
 /(gfarm_url_
  * &&
- * gfarm_url_で始まる 変数 には、n.gfarm_url_PathJoin を使用する
+ * such variables shall be set by using n.gfarm_url_PathJoin()
 /gfarm_url_[a-zA-Z :]*=
  *
  *
- * os.大文字 <=> 第一引数 は、名前 が gfarm_cache_で始まる 変数
- * ioutil.大文字 <=> 第一引数 は、名前 がgfarm_cache_で始まる 変数
+ * (os|ioutil).Capital <=> first argument shall be a variable that name begins with `gfarm_cache_'
 /os\.[A-Z][a-zA-Z_]*(
 /os\.[A-Z][a-zA-Z_]*(gfarm_cache
 /os\.[A-Z][a-zA-Z_]*(gfarm_url
 /(gfarm_cache
  * &&
- * gfarm_cache_で始まる 変数 には、n.gfarm_cache_PathJoin を使用する
+ * such variables shall be set by using n.gfarm_cache_PathJoin()
 /gfarm_cache_[a-zA-Z :]*=
  *
  *
- * gfarmObjectsのメソッドのうち
- * 大文字 で 始まる メソッド
+ * exported methods (functions that have Capial name) of gfarmObjects
 /\<gfarmObjects) [A-Z].*\<error\>
- * は、エラーを gfarmToObjectErr(ctx, err, bucket, object) して かえす
- * 例外 DeleteObjects
- * 再帰 の さきが 大文字 のメソッド なら、
- * 本ルールによりそのままかえせば良いことに注意
+ * shall return gfarmToObjectErr(ctx, err, bucket, object)
+ *    except for DeleteObjects
+ * Note that functions that call another exported methods of gfarmObjects
+ * shall not call gfarmToObjectErr again.
  *
- * 逆に、gfarmObjectsのメソッドのうち
- * 小文字 で 始まる もの
+ * un-exported methods (functions that have lowercase name) of gfarmObjects
 /\<gfarmObjects) [a-z].*\<error\>
- * は、生のエラーをかえす (gfarmToObjectErrしない)
- * 例外: checkUploadIDExistsのかえりちは、gfarmToObjectErrされている
+ * shall not wrap erros with gfarmToObjectErr().
+ * exception: checkUploadIDExists wraps its result by gfarmToObjectErr()
  */
 
 //       gfarmSharedDir          "gfarm:///shared/hpci005858"
 //       gfarmSharedVirtualName  "sss"
 //
 //    Gfarm                       -- S3 API
-//    /shared                     -- アクセス不可
-//    |-- hpci005858              -- バケット置き場 "s3://"
-//    |   |-- .minio.sys          -- 不可視
-//    |   |-- mybucket            -- バケット       "s3://mybucket"
-//    |   `-- sss                 -- 仮想バケット
-//    |       `-- hpci001971      -- プレフィックス "s3://sss/hpci001971"
-//    |       .   |-- .minio.sys  -- 不可視
-//    |       .   `-- bucket1     -- プレフィックス "s3://sss/hpci001971/bucket1"
-//    |       .   .   `-- object1 -- オブジェクト
-//    |       .    .. (bucket2)   -- bucket2はhpci001971直下のリストには現れない
-//    |        .. (hpci001970)    -- hpci001970はsss直下のリストには現れない
+//    /shared                     -- inaccesible
+//    |-- hpci005858              -- bucket pool "s3://"
+//    |   |-- .minio.sys          -- invisible
+//    |   |-- mybucket            -- bucket      "s3://mybucket"
+//    |   `-- sss                 -- virtual bucket
+//    |       `-- hpci001971      -- PRE         "s3://sss/hpci001971"
+//    |       .   |-- .minio.sys  -- invisible
+//    |       .   `-- bucket1     -- PRE         "s3://sss/hpci001971/bucket1"
+//    |       .   .   `-- object1 -- object
+//    |       .    .. (bucket2)   -- non-shared bucket is invisible (DECIDED NOT TO IMPLMENT)
+//    |        .. (hpci001970)    -- total private user is invisible (DECIDED NOT TO IMPLMENT)
 //    |
 //    |-- hpci001971
 //    |   |-- .minio.sys
-//    |   |-- bucket1              -- ACLを用いてhpci005858にアクセスを許可
+//    |   |-- bucket1              -- allow hpci005858 to access bucket1
 //    |   |   `-- object1
-//    |   `-- bucket2              -- bucket2は公開しない
-//    `-- hpci001970
+//    |   `-- bucket2              -- private bucket
+//    `-- hpci001970               -- this user exports nothing
 //        |-- .minio.sys
-//        `-- bucket3              -- bucket3は公開しない
+//        `-- bucket3              -- private bucket
 
 /*
  * Minio Cloud Storage, (C) 2019 Minio, Inc.
