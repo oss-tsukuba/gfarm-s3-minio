@@ -645,7 +645,7 @@ const (
 	empty_str = ""
 )
 
-func CheckError(msgNo int, gfarm_opname, gfarm_funcname, gfarm_path string, err error) () {
+func LogError(msgNo int, gfarm_opname, gfarm_funcname, gfarm_path string, err error) () {
 	var gfarm_e int
 	switch err.(type) {
 	case *gfError:
