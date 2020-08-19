@@ -308,11 +308,13 @@ func getCacheSizeFromEnv(envvar string, defaultValue string) int {
 		return gfarmDefaultCacheSize
 	}
 
-	if i <= 0 || i > 100 {
-		logger.LogIf(context.Background(), fmt.Errorf("ENV '%v' should be a floating point value between 0 and 100.\n"+
-			"The upload chunk size is set to its default: %s\n", gfarmCacheSizeEnvVar, defaultValue))
-		return gfarmDefaultCacheSize
-	}
+/*
+@	if i <= 0 || i > 100 {
+@		logger.LogIf(context.Background(), fmt.Errorf("ENV '%v' should be a floating point value between 0 and 100.\n"+
+@			"The upload chunk size is set to its default: %s\n", gfarmCacheSizeEnvVar, defaultValue))
+@		return gfarmDefaultCacheSize
+@	}
+*/
 
 	return int(i * humanize.MiByte)
 }
@@ -402,7 +404,6 @@ func gfarmToObjectErr(ctx context.Context, err error, params ...string) error {
 		}
 		return minio.BucketAlreadyOwnedByYou{Bucket: bucket}
 	case errors.Is(err, syscall.ENOTEMPTY) || gf.IsENOTEMPTY(err):
-fmt.Fprintf(os.Stderr, "@@@ errors.Is(err, syscall.ENOTEMPTY)\n");
 		if object != "" {
 			return minio.PrefixAccessDenied{Bucket: bucket, Object: object}
 		}
@@ -714,6 +715,10 @@ func (n *gfarmObjects) GetObjectInfo(ctx context.Context, bucket, object string,
 }
 
 func (n *gfarmObjects) PutObject(ctx context.Context, bucket string, object string, r *minio.PutObjReader, opts minio.ObjectOptions) (objInfo minio.ObjectInfo, err error) {
+now := time.Now()
+start := now
+fmt.Fprintf(os.Stderr, "@@@ %v PutObject %q start\n", myformat(start), object)
+
 	gfarm_url_bucket := n.gfarm_url_PathJoin(gfarmSeparator, bucket)
 	_, err = gf.Stat(gfarm_url_bucket)
 	if err != nil {
@@ -741,7 +746,7 @@ func (n *gfarmObjects) PutObject(ctx context.Context, bucket string, object stri
 			return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 		}
 		defer n.deleteObject(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket), tmpname)
-		if _, err = io.Copy(w, r); err != nil {
+		if _, err = myCopy(w, r); err != nil {
 			w.Close()
 			return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 		}
@@ -766,7 +771,7 @@ func (n *gfarmObjects) PutObject(ctx context.Context, bucket string, object stri
 		gf.CheckError(GFARM_MSG_UNFIXED, "PutObject", "Stat", gfarm_url_name, err)
 		return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 	}
-	return minio.ObjectInfo{
+	info := minio.ObjectInfo{
 		Bucket:  bucket,
 		Name:    object,
 		ETag:    r.MD5CurrentHexString(),
@@ -774,7 +779,11 @@ func (n *gfarmObjects) PutObject(ctx context.Context, bucket string, object stri
 		Size:    fi.Size(),
 		IsDir:   fi.IsDir(),
 		AccTime: fi.ModTime(),
-	}, nil
+	}
+
+now = time.Now()
+fmt.Fprintf(os.Stderr, "@@@ %v (%v) PutObject %q end\n", myformat(now), now.Sub(start), object)
+	return info, nil
 }
 
 func (n *gfarmObjects) NewMultipartUpload(ctx context.Context, bucket string, object string, opts minio.ObjectOptions) (uploadID string, err error) {
@@ -854,6 +863,9 @@ func (n *gfarmObjects) CopyObjectPart(ctx context.Context, srcBucket, srcObject,
 }
 
 func (n *gfarmObjects) PutObjectPart(ctx context.Context, bucket, object, uploadID string, partID int, r *minio.PutObjReader, opts minio.ObjectOptions) (info minio.PartInfo, err error) {
+now := time.Now()
+start := now
+fmt.Fprintf(os.Stderr, "@@@ %v PutObjectPart %q start\n", myformat(start), object)
 	gfarm_url_bucket := n.gfarm_url_PathJoin(gfarmSeparator, bucket)
 	_, err = gf.Stat(gfarm_url_bucket)
 	if err != nil {
@@ -871,6 +883,9 @@ func (n *gfarmObjects) PutObjectPart(ctx context.Context, bucket, object, upload
 	info.ETag = r.MD5CurrentHexString()
 	info.LastModified = minio.UTCNow()
 	info.Size = r.Reader.Size()
+
+now = time.Now()
+fmt.Fprintf(os.Stderr, "@@@ %v (%v) PutObjectPart %q end\n", myformat(now), now.Sub(start), object)
 
 	return info, nil
 }
@@ -901,7 +916,7 @@ func (n *gfarmObjects) copyToCachedFile(ctx context.Context, bucket, object stri
 		defer ww.Close()
 		w = nil
 
-		_, err = io.Copy(ww, r.Reader)
+		_, err = myCopy(ww, r.Reader)
 		if err != nil {
 			return err
 		}
@@ -1032,7 +1047,7 @@ func (n *gfarmObjects) copyFromCachedFile(ctx context.Context, bucket, object st
 		rr.SetWrittenSize(value)
 		defer rr.Close()
 		r = nil
-		_, err = io.Copy(w, rr)
+		_, err = myCopy(w, rr)
 		if err != nil {
 			return err
 		}
@@ -1261,4 +1276,36 @@ func (f *cachedFile) Write(b []byte) (int, error) {
 		// FALLTHRU
 	}
 	return f.slower.Write(b)
+}
+
+func myformat(now time.Time) string {
+	return now.UTC().Format("20060102T030405.000000Z")
+}
+
+func myCopy(w io.Writer, r io.Reader) (int64, error) {
+return io.Copy(w, r)
+	var total int64
+	total = 0
+	buf := make([]byte, 1024 * 1024 * 32)
+now := time.Now()
+start := now
+fmt.Fprintf(os.Stderr, "@@@ %v myCopy Start\n", myformat(start))
+	for {
+		len, err := r.Read(buf)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return total, err
+		}
+now = time.Now()
+fmt.Fprintf(os.Stderr, "@@@ %v (%v) myCopy Read %d bytes\n", myformat(now), now.Sub(start), len)
+		w.Write(buf[:len])
+now = time.Now()
+fmt.Fprintf(os.Stderr, "@@@ %v (%v) myCopy Wrote %d bytes\n", myformat(now), now.Sub(start), len)
+		total += int64(len)
+	}
+now = time.Now()
+fmt.Fprintf(os.Stderr, "@@@ %v (%v) myCopy End total %d bytes\n", myformat(now), now.Sub(start), total)
+	return total, nil
 }
