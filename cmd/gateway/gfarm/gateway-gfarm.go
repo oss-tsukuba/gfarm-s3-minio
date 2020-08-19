@@ -251,12 +251,14 @@ func (n *gfarmObjects) gfarm_cache_PathJoin(pathComponents ...string) string {
 // NewGatewayLayer returns gfarm gatewaylayer.
 func (g *GFARM) NewGatewayLayer(creds auth.Credentials) (minio.ObjectLayer, error) {
 
+//fmt.Fprintf(os.Stderr, "@@@ NewGatewayLayer %v\n", g.args)
 	gfarmScheme := ""
 	gfarmSharedDir := g.args[0]
 	gfarmSharedVirtualName := g.args[1]
 
 	cacheRootdir := env.Get(gfarmCachePathEnvVar, "")
 	cacheCapacity := getCacheSizeFromEnv(gfarmCacheSizeEnvVar, strconv.Itoa(gfarmDefaultCacheSize / humanize.MiByte))
+fmt.Fprintf(os.Stderr, "@@@ cacheCapacity: %v\n", cacheCapacity)
 
 	gfarmSharedDir = strings.TrimSuffix(gfarmSharedDir, gfarmSeparator)
 	if strings.HasPrefix(gfarmSharedDir, constGfarmScheme + "/") {
@@ -302,7 +304,7 @@ func (g *GFARM) NewGatewayLayer(creds auth.Credentials) (minio.ObjectLayer, erro
 func getCacheSizeFromEnv(envvar string, defaultValue string) int {
 	envCacheSize := env.Get(envvar, defaultValue)
 
-	i, err := strconv.ParseFloat(envCacheSize, 64)
+	i, err := strconv.ParseFloat(envCacheSize, 1024)
 	if err != nil {
 		logger.LogIf(context.Background(), err)
 		return gfarmDefaultCacheSize
@@ -1283,7 +1285,7 @@ func myformat(now time.Time) string {
 }
 
 func myCopy(w io.Writer, r io.Reader) (int64, error) {
-return io.Copy(w, r)
+//return io.Copy(w, r)
 	var total int64
 	total = 0
 	buf := make([]byte, 1024 * 1024 * 32)
