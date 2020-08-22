@@ -177,7 +177,7 @@ func (n *gfarmObjects) copyToCachedFile(gfarm_url_partName, gfarm_cache_partName
 	bufsize := 32 * 1024 * 1024
 	bufsize = 32 * 1024
 	buf := make([]byte, bufsize)
-	var len int
+	var len int = 0
 
 	c := n.cachectl
 
@@ -193,69 +193,70 @@ fmt.Fprintf(os.Stderr, "@@@ copyToCachedFile A: %v\n", err)
 	}
 	//defer w_cache.Close()
 
+	var read_err error = nil
 	/* write to OS FILE */
 	for {
-		len, err = r.Read(buf)
-		if err == io.EOF {
-			// cache only!
-			myAssert(len == 0, "len == 0")
-if len != 0 {
-fmt.Fprintf(os.Stderr, "@@@ copyToCachedFile XXX len != 0: %v\n", err)
-	myWrite(w_cache, hash, buf[:len])
-}
-			if err := w_cache.Close(); err != nil {
-				c.updateCacheUsage(-total)
-fmt.Fprintf(os.Stderr, "@@@ copyToCachedFile B: %v\n", err)
-				return err
-			}
-			break
-		} else if err != nil {
+		len, read_err = r.Read(buf)
+
+		if read_err != nil && read_err != io.EOF {
 			// fatal error!
 			w_cache.Close()
 			c.updateCacheUsage(-total)
-fmt.Fprintf(os.Stderr, "@@@ copyToCachedFile C: %v\n", err)
-			return err
+fmt.Fprintf(os.Stderr, "@@@ copyToCachedFile C: %v\n", read_err)
+			return read_err
 		}
-		myAssert(len != 0, "len != 0")
 
 		if c.fasterLimit < c.fasterTotal + int64(len) {
-			// cache full => switch to gfarm
-			if err := w_cache.Close(); err != nil {
+			if close_err := w_cache.Close(); close_err != nil {
 				c.updateCacheUsage(-total)
-fmt.Fprintf(os.Stderr, "@@@ copyToCachedFile D: %v\n", err)
-				return err
+fmt.Fprintf(os.Stderr, "@@@ copyToCachedFile D: %v\n", close_err)
+				return close_err
 			}
-			break
+			read_err = nil
+			break // cache full => switch to gfarm
 		}
 
-		wrote_bytes, err := myWrite(w_cache, hash, buf[:len])
+		wrote_bytes, write_err := myWrite(w_cache, hash, buf[:len])
 		if wrote_bytes != len {
-			// partial write to os file => switch to gfarm
-			if err := w_cache.Close(); err != nil {
+			if write_err := w_cache.Close(); write_err != nil {
 				c.updateCacheUsage(-total)
-fmt.Fprintf(os.Stderr, "@@@ copyToCachedFile E: %v\n", err)
-				return err
+fmt.Fprintf(os.Stderr, "@@@ copyToCachedFile E: %v\n", write_err)
+				return write_err
 			}
-			break
-		} /* else */
-		if err != nil {
-			// write failed to os file => switch to gfarm
-			if err := w_cache.Close(); err != nil {
+			read_err = nil
+			break // partial write to cache => switch to gfarm
+		}
+
+		if write_err != nil {
+			if close_err := w_cache.Close(); close_err != nil {
 				c.updateCacheUsage(-total)
-fmt.Fprintf(os.Stderr, "@@@ copyToCachedFile F: %v\n", err)
-				return err
+fmt.Fprintf(os.Stderr, "@@@ copyToCachedFile F: %v\n", close_err)
+				return close_err
+			}
+			read_err = nil
+			break // write to cache failed => switch to gfarm
+		}
+
+		myAssert(wrote_bytes == len, "wrote_bytes == len")
+
+		total += int64(wrote_bytes)
+		c.updateCacheUsage(int64(wrote_bytes))
+
+		if read_err == io.EOF {
+			// cache only!
+			if close_err := w_cache.Close(); close_err != nil {
+				c.updateCacheUsage(-total)
+fmt.Fprintf(os.Stderr, "@@@ copyToCachedFile B: %v\n", close_err)
+				return close_err
 			}
 			break
 		}
-
-		c.updateCacheUsage(int64(len))
-
-		total += int64(len)
 	}
 
 	n.registerFileSize(gfarm_cache_partName, total)
 
-	if len != 0 {
+	if read_err != io.EOF {
+//	if len != 0 ??<
 		w_gfarm, err := n.createGfarmFile(gfarm_url_partName)
 		if err != nil {
 fmt.Fprintf(os.Stderr, "@@@ copyToCachedFile G: %v\n", err)
@@ -263,35 +264,43 @@ fmt.Fprintf(os.Stderr, "@@@ copyToCachedFile G: %v\n", err)
 		}
 		//defer w_gfarm.Close()
 
-		for {
-			wrote_bytes, err := myWrite(w_gfarm, hash, buf[:len])
-			if err != nil {
+		if len != 0 {
+			wrote_bytes, write_err := myWrite(w_gfarm, hash, buf[:len])
+			total += int64(wrote_bytes)
+			if write_err != nil {
 				w_gfarm.Close()
-fmt.Fprintf(os.Stderr, "@@@ copyToCachedFile H: %v\n", err)
-				return err
+fmt.Fprintf(os.Stderr, "@@@ copyToCachedFile H: %v\n", write_err)
+				return write_err
 			}
 			myAssert(wrote_bytes == len, "wrote_bytes == len")
-
-			len, err = r.Read(buf)
-			if err == io.EOF {
-if len != 0 {
-fmt.Fprintf(os.Stderr, "@@@ copyToCachedFile XXX len != 0: %v\n", err)
-	myWrite(w_gfarm, hash, buf[:len])
-}
-				break
-			} else if err != nil {
-				// fatal error!
-				w_gfarm.Close()
-fmt.Fprintf(os.Stderr, "@@@ copyToCachedFile I: %v\n", err)
-				return err
-			}
-			myAssert(len != 0, "len != 0")
-
 		}
 
-		if err := w_gfarm.Close(); err != nil {
-fmt.Fprintf(os.Stderr, "@@@ copyToCachedFile J: %v\n", err)
-			return err
+		for {
+			len, read_err := r.Read(buf)
+			if read_err != nil && read_err != io.EOF {
+				// fatal error!
+				w_gfarm.Close()
+fmt.Fprintf(os.Stderr, "@@@ copyToCachedFile I: %v\n", read_err)
+				return read_err
+			}
+			if len != 0 {
+				wrote_bytes, write_err := myWrite(w_gfarm, hash, buf[:len])
+				total += int64(wrote_bytes)
+				if write_err != nil {
+					w_gfarm.Close()
+fmt.Fprintf(os.Stderr, "@@@ copyToCachedFile J: %v\n", write_err)
+					return write_err
+				}
+				myAssert(wrote_bytes == len, "wrote_bytes == len")
+			}
+			if read_err == io.EOF {
+				break
+			}
+		}
+
+		if close_err := w_gfarm.Close(); close_err != nil {
+fmt.Fprintf(os.Stderr, "@@@ copyToCachedFile K: %v\n", close_err)
+			return close_err
 		}
 	}
 
@@ -427,7 +436,10 @@ func (n *gfarmObjects) createOsFile(gfarm_cache_path string) (*os.File, error) {
 
 func (n *gfarmObjects) registerFileSize(gfarm_cache_partName string, value int64) () {
 //fmt.Fprintf(os.Stderr, "@@@ registerFileSize: %q %v\n", gfarm_cache_partName, value)
-	n.cachectl.sizes[gfarm_cache_partName] = value
+	c := n.cachectl
+	c.mutex.Lock()
+	c.sizes[gfarm_cache_partName] = value
+	c.mutex.Unlock()
 //	err := gf.LSetXattr(gfarm_url_path, gfarmS3OffsetKey, unsafe.Pointer(&value), unsafe.Sizeof(value), gf.GFS_XATTR_CREATE)
 // GFS_XATTR_REPLACE
 //	if err != nil {
@@ -465,7 +477,10 @@ func (n *gfarmObjects) registerHashValue(gfarm_url_path string, hash hash.Hash) 
 //fmt.Fprintf(os.Stderr, "@@@ registerHashValue: %q %v\n", gfarm_url_path, hash)
 //	var hash_size uintptr = uintptr(hash.Size())
 	ha := hash.Sum(nil)
-	n.cachectl.hashes[gfarm_url_path] = ha
+	c := n.cachectl
+	c.mutex.Lock()
+	c.hashes[gfarm_url_path] = ha
+	c.mutex.Unlock()
 //	hb := make([]byte, len(ha))
 //	copy(hb, ha)
 //	n.cachectl.hashes[gfarm_url_path] = hb
@@ -531,21 +546,22 @@ func myCopyHash(w io.Writer, r io.Reader, hash hash.Hash, buf []byte) (int64, er
 //fmt.Fprintf(os.Stderr, "@@@ myCopyHash\n")
 	var total int64 = 0
 	for {
-		len, err := r.Read(buf)
+		len, read_err := r.Read(buf)
+		if read_err != nil && read_err != io.EOF {
+fmt.Fprintf(os.Stderr, "@@@ myCopyHash A: %v\n", read_err)
+			return total, read_err
+		}
 		if len != 0 {
-			wrote_bytes, e := myWrite(w, hash, buf[:len])
+			wrote_bytes, write_err := myWrite(w, hash, buf[:len])
 			total += int64(wrote_bytes)
-			if e != nil {
-fmt.Fprintf(os.Stderr, "@@@ myCopyHash A: %v\n", e)
-				return total, e
+			if write_err != nil {
+fmt.Fprintf(os.Stderr, "@@@ myCopyHash B: %v\n", write_err)
+				return total, write_err
 			}
 			myAssert(wrote_bytes == len, "wrote_bytes == len")
 		}
-		if err == io.EOF {
+		if read_err == io.EOF {
 			return total, nil
-		} else if err != nil {
-fmt.Fprintf(os.Stderr, "@@@ myCopyHash B: %v\n", err)
-			return total, err
 		}
 	}
 }
@@ -554,16 +570,20 @@ func myCopyHashUpto(w io.Writer, r io.Reader, hash hash.Hash, limit int64, buf [
 //fmt.Fprintf(os.Stderr, "@@@ myCopyHashUpto\n")
 	var total int64 = 0
 	for {
-		len, err := r.Read(buf)
+		len, read_err := r.Read(buf)
+		if read_err != nil && read_err != io.EOF {
+fmt.Fprintf(os.Stderr, "@@@ myCopyHashUpto A: %v\n", read_err)
+			return total, read_err
+		}
 		if len != 0 {
 			if limit < total + int64(len) {
 				len = int(limit - total)
 			}
-			wrote_bytes, e := myWrite(w, hash, buf[:len])
+			wrote_bytes, write_err := myWrite(w, hash, buf[:len])
 			total += int64(wrote_bytes)
-			if e != nil {
-fmt.Fprintf(os.Stderr, "@@@ myCopyHashUpto A: %v\n", e)
-				return total, e
+			if write_err != nil {
+fmt.Fprintf(os.Stderr, "@@@ myCopyHashUpto B: %v\n", write_err)
+				return total, write_err
 			}
 			myAssert(wrote_bytes == len, "wrote_bytes == len")
 			if limit <= total {
@@ -571,12 +591,9 @@ fmt.Fprintf(os.Stderr, "@@@ myCopyHashUpto A: %v\n", e)
 				return total, nil
 			}
 		}
-		if err == io.EOF {
+		if read_err == io.EOF {
 			myAssert(limit == total, "limit == total")
 			return total, nil
-		} else if err != nil {
-fmt.Fprintf(os.Stderr, "@@@ myCopyHashUpto B: %v\n", err)
-			return total, err
 		}
 	}
 }

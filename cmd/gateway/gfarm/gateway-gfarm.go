@@ -1025,28 +1025,29 @@ now := time.Now()
 start := now
 //fmt.Fprintf(os.Stderr, "@@@ %v myCopy Start\n", myformat(start))
 	for {
-		len, err := r.Read(buf)
+		len, read_err := r.Read(buf)
 now = time.Now()
 //fmt.Fprintf(os.Stderr, "@@@ %v (%v) myCopy Read %d bytes\n", myformat(now), now.Sub(start), len)
+		if read_err != nil && read_err != io.EOF {
+fmt.Fprintf(os.Stderr, "@@@ myCopy A: %v\n", read_err)
+			return total, read_err
+		}
 		if len != 0 {
-			wrote_bytes, e := w.Write(buf[:len])
+			wrote_bytes, write_err := w.Write(buf[:len])
 now = time.Now()
 //fmt.Fprintf(os.Stderr, "@@@ %v (%v) myCopy Wrote %d bytes\n", myformat(now), now.Sub(start), len)
 			total += int64(wrote_bytes)
-			if e != nil {
-fmt.Fprintf(os.Stderr, "@@@ myCopy A: %v\n", e)
-				return total, e
+			if write_err != nil {
+fmt.Fprintf(os.Stderr, "@@@ myCopy B: %v\n", write_err)
+				return total, write_err
 			}
 			myAssert(wrote_bytes == len, "wrote_bytes == len")
 		}
-		if err == io.EOF {
+		if read_err == io.EOF {
 now = time.Now()
 //fmt.Fprintf(os.Stderr, "@@@ %v (%v) myCopy End total %d bytes\n", myformat(now), now.Sub(start), total)
 _ = start
 			return total, nil
-		} else if err != nil {
-fmt.Fprintf(os.Stderr, "@@@ myCopy B: %v\n", err)
-			return total, err
 		}
 	}
 }
