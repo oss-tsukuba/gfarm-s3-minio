@@ -31,7 +31,7 @@ import (
 )
 
 func (n *gfarmObjects) createMetaTmpBucketGfarm(minioMetaTmpBucket string) error {
-fmt.Fprintf(os.Stderr, "@@@ createMetaTmpBucketGfarm: %q\n", minioMetaTmpBucket)
+//fmt.Fprintf(os.Stderr, "@@@ createMetaTmpBucketGfarm: %q\n", minioMetaTmpBucket)
 	gfarm_url_minioMetaTmpBucket := n.gfarm_url_PathJoin(gfarmSeparator, minioMetaTmpBucket)
 	if err := gf.MkdirAll(gfarm_url_minioMetaTmpBucket, os.FileMode(0755)); err != nil {
 		gf.LogError(GFARM_MSG_UNFIXED, "NewGatewayLayer", "MkdirAll", gfarm_url_minioMetaTmpBucket, err)
@@ -41,7 +41,7 @@ fmt.Fprintf(os.Stderr, "@@@ createMetaTmpBucketGfarm: %q\n", minioMetaTmpBucket)
 }
 
 func (n *gfarmObjects) createMetaTmpBucketCache(minioMetaTmpBucket string) error {
-fmt.Fprintf(os.Stderr, "@@@ createMetaTmpBucketCache: %q\n", minioMetaTmpBucket)
+//fmt.Fprintf(os.Stderr, "@@@ createMetaTmpBucketCache: %q\n", minioMetaTmpBucket)
 	if n.cachectl == nil {
 		return nil
 	}
@@ -53,7 +53,7 @@ fmt.Fprintf(os.Stderr, "@@@ createMetaTmpBucketCache: %q\n", minioMetaTmpBucket)
 }
 
 func (n *gfarmObjects) createMultipartUploadDirGfarm(dirName string) error {
-fmt.Fprintf(os.Stderr, "@@@ createMultipartUploadDirGfarm: %q\n", dirName)
+//fmt.Fprintf(os.Stderr, "@@@ createMultipartUploadDirGfarm: %q\n", dirName)
 	gfarm_url_dirName := n.gfarm_url_PathJoin(dirName)
 	if err := gf.Mkdir(gfarm_url_dirName, os.FileMode(0755)); err != nil {
 		gf.LogError(GFARM_MSG_UNFIXED, "NewMultipartUpload", "Mkdir", gfarm_url_dirName, err)
@@ -63,7 +63,7 @@ fmt.Fprintf(os.Stderr, "@@@ createMultipartUploadDirGfarm: %q\n", dirName)
 }
 
 func (n *gfarmObjects) createMultipartUploadDirCache(dirName string) error {
-fmt.Fprintf(os.Stderr, "@@@ createMultipartUploadDirCache: %q\n", dirName)
+//fmt.Fprintf(os.Stderr, "@@@ createMultipartUploadDirCache: %q\n", dirName)
 	if n.cachectl == nil {
 		return nil
 	}
@@ -75,7 +75,7 @@ fmt.Fprintf(os.Stderr, "@@@ createMultipartUploadDirCache: %q\n", dirName)
 }
 
 func (n *gfarmObjects) checkUploadIDExistsGfarm(dirName string) error {
-fmt.Fprintf(os.Stderr, "@@@ checkUploadIDExistsGfarm: %q\n", dirName)
+//fmt.Fprintf(os.Stderr, "@@@ checkUploadIDExistsGfarm: %q\n", dirName)
 	gfarm_url_dirName := n.gfarm_url_PathJoin(dirName)
 	_, err := gf.Stat(gfarm_url_dirName)
 	if err != nil {
@@ -86,7 +86,7 @@ fmt.Fprintf(os.Stderr, "@@@ checkUploadIDExistsGfarm: %q\n", dirName)
 }
 
 func (n *gfarmObjects) checkUploadIDExistsCache(dirName string) error {
-fmt.Fprintf(os.Stderr, "@@@ checkUploadIDExistsCache: %q\n", dirName)
+//fmt.Fprintf(os.Stderr, "@@@ checkUploadIDExistsCache: %q\n", dirName)
 	if n.cachectl == nil {
 		return nil
 	}
@@ -99,7 +99,7 @@ fmt.Fprintf(os.Stderr, "@@@ checkUploadIDExistsCache: %q\n", dirName)
 }
 
 func (n *gfarmObjects) removeMultipartCacheWorkdir(dirName string) error {
-fmt.Fprintf(os.Stderr, "@@@ removeMultipartCacheWorkdir: %q\n", dirName)
+//fmt.Fprintf(os.Stderr, "@@@ removeMultipartCacheWorkdir: %q\n", dirName)
 	if n.cachectl == nil {
 		return nil
 	}
@@ -123,7 +123,7 @@ fmt.Fprintf(os.Stderr, "@@@ removeMultipartCacheWorkdir: %q\n", dirName)
 }
 
 func (n *gfarmObjects) removeMultipartGfarmWorkdir(dirName string) error {
-fmt.Fprintf(os.Stderr, "@@@ removeMultipartGfarmWorkdir: %q\n", dirName)
+//fmt.Fprintf(os.Stderr, "@@@ removeMultipartGfarmWorkdir: %q\n", dirName)
 	gfarm_url_dirName := n.gfarm_url_PathJoin(dirName)
 	entries, err := gf.ReadDir(gfarm_url_dirName)
 	if err != nil {
@@ -148,7 +148,7 @@ fmt.Fprintf(os.Stderr, "@@@ removeMultipartGfarmWorkdir: %q\n", dirName)
 }
 
 func (n *gfarmObjects) copyToPartFileTruncateOrCreate(partName string, r *minio.PutObjReader) error {
-fmt.Fprintf(os.Stderr, "@@@ copyToPartFileTruncateOrCreate: %q\n", partName)
+//fmt.Fprintf(os.Stderr, "@@@ copyToPartFileTruncateOrCreate: %q\n", partName)
 	gfarm_url_partName := n.gfarm_url_PathJoin(partName)
 	n.removeGfarmFileIfExists(gfarm_url_partName)
 	if n.cachectl != nil {
@@ -161,7 +161,7 @@ fmt.Fprintf(os.Stderr, "@@@ copyToPartFileTruncateOrCreate: %q\n", partName)
 }
 
 func (n *gfarmObjects) copyFromPartFileAppendOrCreate(w *gf.File, partName string) error {
-fmt.Fprintf(os.Stderr, "@@@ copyFromPartFileAppendOrCreate: %q\n", partName)
+//fmt.Fprintf(os.Stderr, "@@@ copyFromPartFileAppendOrCreate: %q\n", partName)
 	gfarm_url_partName := n.gfarm_url_PathJoin(partName)
 	if n.cachectl != nil {
 		gfarm_cache_partName := n.gfarm_cache_PathJoin(partName)
@@ -172,9 +172,11 @@ fmt.Fprintf(os.Stderr, "@@@ copyFromPartFileAppendOrCreate: %q\n", partName)
 }
 
 func (n *gfarmObjects) copyToCachedFile(gfarm_url_partName, gfarm_cache_partName string, r *minio.PutObjReader) error {
-fmt.Fprintf(os.Stderr, "@@@ copyToCachedFile: %q %q\n", gfarm_url_partName, gfarm_cache_partName)
+//fmt.Fprintf(os.Stderr, "@@@ copyToCachedFile: %q %q\n", gfarm_url_partName, gfarm_cache_partName)
 	var total int64 = 0
-	buf := make([]byte, 1024 * 1024 * 32)
+	bufsize := 32 * 1024 * 1024
+	bufsize = 32 * 1024
+	buf := make([]byte, bufsize)
 	var len int
 
 	c := n.cachectl
@@ -197,6 +199,10 @@ fmt.Fprintf(os.Stderr, "@@@ copyToCachedFile A: %v\n", err)
 		if err == io.EOF {
 			// cache only!
 			myAssert(len == 0, "len == 0")
+if len != 0 {
+fmt.Fprintf(os.Stderr, "@@@ copyToCachedFile XXX len != 0: %v\n", err)
+	myWrite(w_cache, hash, buf[:len])
+}
 			if err := w_cache.Close(); err != nil {
 				c.updateCacheUsage(-total)
 fmt.Fprintf(os.Stderr, "@@@ copyToCachedFile B: %v\n", err)
@@ -222,8 +228,8 @@ fmt.Fprintf(os.Stderr, "@@@ copyToCachedFile D: %v\n", err)
 			break
 		}
 
-		n, err := myWrite(w_cache, hash, buf[:len])
-		if n != len {
+		wrote_bytes, err := myWrite(w_cache, hash, buf[:len])
+		if wrote_bytes != len {
 			// partial write to os file => switch to gfarm
 			if err := w_cache.Close(); err != nil {
 				c.updateCacheUsage(-total)
@@ -268,6 +274,10 @@ fmt.Fprintf(os.Stderr, "@@@ copyToCachedFile H: %v\n", err)
 
 			len, err = r.Read(buf)
 			if err == io.EOF {
+if len != 0 {
+fmt.Fprintf(os.Stderr, "@@@ copyToCachedFile XXX len != 0: %v\n", err)
+	myWrite(w_gfarm, hash, buf[:len])
+}
 				break
 			} else if err != nil {
 				// fatal error!
@@ -293,13 +303,16 @@ fmt.Fprintf(os.Stderr, "@@@ copyToCachedFile J: %v\n", err)
 }
 
 func (n *gfarmObjects) copyFromCachedFile(w *gf.File, gfarm_url_partName, gfarm_cache_partName string) error {
-fmt.Fprintf(os.Stderr, "@@@ copyFromCachedFile: %q %q\n", gfarm_url_partName, gfarm_cache_partName)
+//fmt.Fprintf(os.Stderr, "@@@ copyFromCachedFile: %q %q\n", gfarm_url_partName, gfarm_cache_partName)
 	c := n.cachectl
 
-	buf := make([]byte, 1024 * 1024 * 32)
+	bufsize := 32 * 1024 * 1024
+	bufsize = 32 * 1024
+	buf := make([]byte, bufsize)
 
 	r_cache, err := n.openOsFile(gfarm_cache_partName)
 	if err != nil {
+fmt.Fprintf(os.Stderr, "@@@ copyFromCachedFile A: %v\n", err)
 		return err
 	}
 	defer r_cache.Close()
@@ -313,6 +326,7 @@ fmt.Fprintf(os.Stderr, "@@@ copyFromCachedFile: %q %q\n", gfarm_url_partName, gf
 	if err == nil {
 		r_gfarm, err := n.openGfarmFile(gfarm_url_partName)
 		if err != nil {
+fmt.Fprintf(os.Stderr, "@@@ copyFromCachedFile B: %v\n", err)
 			return err
 		}
 
@@ -323,18 +337,20 @@ fmt.Fprintf(os.Stderr, "@@@ copyFromCachedFile: %q %q\n", gfarm_url_partName, gf
 		total, err := myCopyHashUpto(w, r_cache, hash, cacheFileSize, buf)
 
 		if total != cacheFileSize {
-//XXX
-			return err
+fmt.Fprintf(os.Stderr, "@@@ copyFromCachedFile C total != cacheFileSize: %v\n", io.ErrUnexpectedEOF)
+			return io.ErrUnexpectedEOF
 		}
 
 		_, err = myCopyHash(w, r_gfarm, hash, buf)
 		if err != nil {
+fmt.Fprintf(os.Stderr, "@@@ copyFromCachedFile D: %v\n", err)
 			return err
 		}
 
 	} else {
 		_, err = myCopyHash(w, r_cache, hash, buf)
 		if err != nil {
+fmt.Fprintf(os.Stderr, "@@@ copyFromCachedFile E: %v\n", err)
 			return err
 		}
 	}
@@ -344,7 +360,10 @@ fmt.Fprintf(os.Stderr, "@@@ copyFromCachedFile: %q %q\n", gfarm_url_partName, gf
 		ha, _ := n.retrieveHashValue(gfarm_url_partName)
 
 		if bytes.Compare(hb, ha) != 0 {
-			return io.ErrNoProgress
+fmt.Fprintf(os.Stderr, "@@@ copyFromCachedFile F: hash check failed: %v %v %v\n", hb, ha, io.ErrNoProgress)
+			//return io.ErrNoProgress
+		} else {
+fmt.Fprintf(os.Stderr, "@@@ copyFromCachedFile F: hash check OK\n")
 		}
 	}
 
@@ -368,7 +387,7 @@ fmt.Fprintf(os.Stderr, "@@@ copyToGfarmFile: %q\n", err)
 }
 
 func (n *gfarmObjects) copyFromGfarmFile(w *gf.File, gfarm_url_partName string) error {
-fmt.Fprintf(os.Stderr, "@@@ copyFromGfarmFile: %q\n", gfarm_url_partName)
+//fmt.Fprintf(os.Stderr, "@@@ copyFromGfarmFile: %q\n", gfarm_url_partName)
 	r, err := n.openGfarmFile(gfarm_url_partName)
 	if err != nil {
 		return err
@@ -382,7 +401,7 @@ fmt.Fprintf(os.Stderr, "@@@ copyFromGfarmFile: %q\n", gfarm_url_partName)
 }
 
 func (n *gfarmObjects) createGfarmFile(gfarm_url_path string) (*gf.File, error) {
-fmt.Fprintf(os.Stderr, "@@@ createGfarmFile: %q\n", gfarm_url_path)
+//fmt.Fprintf(os.Stderr, "@@@ createGfarmFile: %q\n", gfarm_url_path)
 	w, err := gf.OpenFile(gfarm_url_path, os.O_WRONLY | os.O_CREATE | os.O_TRUNC, os.FileMode(0644))
 	if err != nil {
 		gf.LogError(GFARM_MSG_UNFIXED, "createGfarmFile", "OpenFile", gfarm_url_path, err)
@@ -392,7 +411,7 @@ fmt.Fprintf(os.Stderr, "@@@ createGfarmFile: %q\n", gfarm_url_path)
 }
 
 func (n *gfarmObjects) openGfarmFile(gfarm_url_path string) (*gf.File, error) {
-fmt.Fprintf(os.Stderr, "@@@ openGfarmFile: %q\n", gfarm_url_path)
+//fmt.Fprintf(os.Stderr, "@@@ openGfarmFile: %q\n", gfarm_url_path)
 	r, err := gf.OpenFile(gfarm_url_path, os.O_RDONLY, os.FileMode(0644))
 	if err != nil {
 		gf.LogError(GFARM_MSG_UNFIXED, "openGfarmFile", "OpenFile", gfarm_url_path, err)
@@ -402,12 +421,12 @@ fmt.Fprintf(os.Stderr, "@@@ openGfarmFile: %q\n", gfarm_url_path)
 }
 
 func (n *gfarmObjects) createOsFile(gfarm_cache_path string) (*os.File, error) {
-fmt.Fprintf(os.Stderr, "@@@ createOsFile: %q\n", gfarm_cache_path)
+//fmt.Fprintf(os.Stderr, "@@@ createOsFile: %q\n", gfarm_cache_path)
 	return os.OpenFile(gfarm_cache_path, os.O_WRONLY | os.O_CREATE | os.O_TRUNC, os.FileMode(0644))
 }
 
 func (n *gfarmObjects) registerFileSize(gfarm_cache_partName string, value int64) () {
-fmt.Fprintf(os.Stderr, "@@@ registerFileSize: %q %v\n", gfarm_cache_partName, value)
+//fmt.Fprintf(os.Stderr, "@@@ registerFileSize: %q %v\n", gfarm_cache_partName, value)
 	n.cachectl.sizes[gfarm_cache_partName] = value
 //	err := gf.LSetXattr(gfarm_url_path, gfarmS3OffsetKey, unsafe.Pointer(&value), unsafe.Sizeof(value), gf.GFS_XATTR_CREATE)
 // GFS_XATTR_REPLACE
@@ -418,7 +437,7 @@ fmt.Fprintf(os.Stderr, "@@@ registerFileSize: %q %v\n", gfarm_cache_partName, va
 }
 
 func (n *gfarmObjects) removeGfarmFileIfExists(gfarm_url_path string) error {
-fmt.Fprintf(os.Stderr, "@@@ removeGfarmFileIfExists: %q\n", gfarm_url_path)
+//fmt.Fprintf(os.Stderr, "@@@ removeGfarmFileIfExists: %q\n", gfarm_url_path)
 	if n.cachectl != nil {
 		n.deleteHashValue(gfarm_url_path)
 	}
@@ -430,7 +449,7 @@ fmt.Fprintf(os.Stderr, "@@@ removeGfarmFileIfExists: %q\n", gfarm_url_path)
 }
 
 func (n *gfarmObjects) removeOsFileIfExists(gfarm_cache_path string) error {
-fmt.Fprintf(os.Stderr, "@@@ removeOsFileIfExists: %q\n", gfarm_cache_path)
+//fmt.Fprintf(os.Stderr, "@@@ removeOsFileIfExists: %q\n", gfarm_cache_path)
 	myAssert(n.cachectl != nil, "n.cachectl != nil")
 	cacheFileSize := n.retrieveFileSize(gfarm_cache_path)
 	n.cachectl.updateCacheUsage(-cacheFileSize)
@@ -443,10 +462,13 @@ fmt.Fprintf(os.Stderr, "@@@ removeOsFileIfExists: %q\n", gfarm_cache_path)
 }
 
 func (n *gfarmObjects) registerHashValue(gfarm_url_path string, hash hash.Hash) () {
-fmt.Fprintf(os.Stderr, "@@@ registerHashValue: %q %v\n", gfarm_url_path, hash)
+//fmt.Fprintf(os.Stderr, "@@@ registerHashValue: %q %v\n", gfarm_url_path, hash)
 //	var hash_size uintptr = uintptr(hash.Size())
 	ha := hash.Sum(nil)
 	n.cachectl.hashes[gfarm_url_path] = ha
+//	hb := make([]byte, len(ha))
+//	copy(hb, ha)
+//	n.cachectl.hashes[gfarm_url_path] = hb
 //	err = gf.LSetXattr(gfarm_url_partName, gfarmS3DigestKey, unsafe.Pointer(&ha[0]), hash_size, gf.GFS_XATTR_CREATE)
 //	if err != nil {
 //		gf.LogError(GFARM_MSG_UNFIXED, "copyToCachedFile", "LSetXattr", gfarm_url_partName, err)
@@ -455,12 +477,12 @@ fmt.Fprintf(os.Stderr, "@@@ registerHashValue: %q %v\n", gfarm_url_path, hash)
 }
 
 func (n *gfarmObjects) openOsFile(gfarm_cache_path string) (*os.File, error) {
-fmt.Fprintf(os.Stderr, "@@@ openOsFile: %q\n", gfarm_cache_path)
+//fmt.Fprintf(os.Stderr, "@@@ openOsFile: %q\n", gfarm_cache_path)
 	return os.OpenFile(gfarm_cache_path, os.O_RDONLY, os.FileMode(0644))
 }
 
 func (n *gfarmObjects) retrieveFileSize(gfarm_cache_partName string) int64 {
-fmt.Fprintf(os.Stderr, "@@@ retrieveFileSize: %q\n", gfarm_cache_partName)
+//fmt.Fprintf(os.Stderr, "@@@ retrieveFileSize: %q\n", gfarm_cache_partName)
 	return n.cachectl.sizes[gfarm_cache_partName]
 //	var value int64
 //	size := unsafe.Sizeof(value)
@@ -473,12 +495,12 @@ fmt.Fprintf(os.Stderr, "@@@ retrieveFileSize: %q\n", gfarm_cache_partName)
 }
 
 func (n *gfarmObjects) deleteFileSize(gfarm_cache_partName string) () {
-fmt.Fprintf(os.Stderr, "@@@ deleteFileSize: %q\n", gfarm_cache_partName)
+//fmt.Fprintf(os.Stderr, "@@@ deleteFileSize: %q\n", gfarm_cache_partName)
 	delete(n.cachectl.sizes, gfarm_cache_partName)
 }
 
 func (n *gfarmObjects) retrieveHashValue(gfarm_url_partName string) ([]byte, error) {
-fmt.Fprintf(os.Stderr, "@@@ retrieveHashValue: %q\n", gfarm_url_partName)
+//fmt.Fprintf(os.Stderr, "@@@ retrieveHashValue: %q\n", gfarm_url_partName)
 	return n.cachectl.hashes[gfarm_url_partName], nil
 //	var hash_size uintptr = uintptr(hash.Size())
 //	ha := make([]byte, hash_size)
@@ -493,7 +515,7 @@ fmt.Fprintf(os.Stderr, "@@@ retrieveHashValue: %q\n", gfarm_url_partName)
 }
 
 func (n *gfarmObjects) deleteHashValue(gfarm_url_partName string) () {
-fmt.Fprintf(os.Stderr, "@@@ deleteHashValue: %q\n", gfarm_url_partName)
+//fmt.Fprintf(os.Stderr, "@@@ deleteHashValue: %q\n", gfarm_url_partName)
 	delete(n.cachectl.hashes, gfarm_url_partName)
 }
 
@@ -510,18 +532,21 @@ func myCopyHash(w io.Writer, r io.Reader, hash hash.Hash, buf []byte) (int64, er
 	var total int64 = 0
 	for {
 		len, err := r.Read(buf)
+		if len != 0 {
+			wrote_bytes, e := myWrite(w, hash, buf[:len])
+			total += int64(wrote_bytes)
+			if e != nil {
+fmt.Fprintf(os.Stderr, "@@@ myCopyHash A: %v\n", e)
+				return total, e
+			}
+			myAssert(wrote_bytes == len, "wrote_bytes == len")
+		}
 		if err == io.EOF {
 			return total, nil
 		} else if err != nil {
+fmt.Fprintf(os.Stderr, "@@@ myCopyHash B: %v\n", err)
 			return total, err
 		}
-		wrote_bytes, err := myWrite(w, hash, buf[:len])
-		if err != nil {
-			return total, err
-		}
-		myAssert(wrote_bytes == len, "wrote_bytes == len")
-
-		total += int64(len)
 	}
 }
 
@@ -530,26 +555,28 @@ func myCopyHashUpto(w io.Writer, r io.Reader, hash hash.Hash, limit int64, buf [
 	var total int64 = 0
 	for {
 		len, err := r.Read(buf)
+		if len != 0 {
+			if limit < total + int64(len) {
+				len = int(limit - total)
+			}
+			wrote_bytes, e := myWrite(w, hash, buf[:len])
+			total += int64(wrote_bytes)
+			if e != nil {
+fmt.Fprintf(os.Stderr, "@@@ myCopyHashUpto A: %v\n", e)
+				return total, e
+			}
+			myAssert(wrote_bytes == len, "wrote_bytes == len")
+			if limit <= total {
+				myAssert(limit == total, "limit == total")
+				return total, nil
+			}
+		}
 		if err == io.EOF {
+			myAssert(limit == total, "limit == total")
 			return total, nil
 		} else if err != nil {
+fmt.Fprintf(os.Stderr, "@@@ myCopyHashUpto B: %v\n", err)
 			return total, err
-		}
-
-		if limit < total + int64(len) {
-			len = int(limit - total)
-		}
-
-		wrote_bytes, err := myWrite(w, hash, buf[:len])
-		if err != nil {
-			return total, err
-		}
-		myAssert(wrote_bytes == len, "wrote_bytes == len")
-
-		total += int64(len)
-
-		if limit <= total {
-			return total, nil
 		}
 	}
 }

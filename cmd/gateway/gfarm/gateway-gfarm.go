@@ -881,12 +881,12 @@ func (n *gfarmObjects) CompleteMultipartUpload(ctx context.Context, bucket, obje
 	_, err = gf.Stat(gfarm_url_bucket)
 	if err != nil {
 		gf.LogError(GFARM_MSG_UNFIXED, "CompleteMultipartUpload", "Stat", gfarm_url_bucket, err)
-fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload: %v\n", err)
+fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload A: %v\n", err)
 		return objInfo, gfarmToObjectErr(ctx, err, bucket)
 	}
 
 	if err = n.checkUploadIDExists(ctx, bucket, object, uploadID); err != nil {
-fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload: %v\n", err)
+fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload B: %v\n", err)
 		return objInfo, err
 	}
 
@@ -896,7 +896,7 @@ fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload: %v\n", err)
 		gfarm_url_dir := n.gfarm_url_PathJoin(dir)
 		if err = gf.MkdirAll(gfarm_url_dir, os.FileMode(0755)); err != nil {
 			gf.LogError(GFARM_MSG_UNFIXED, "CompleteMultipartUpload", "MkdirAll", gfarm_url_dir, err)
-fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload: %v\n", err)
+fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload C: %v\n", err)
 			return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 		}
 	}
@@ -906,7 +906,7 @@ fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload: %v\n", err)
 	w, err := gf.OpenFile(gfarm_url_tmpname, os.O_WRONLY | os.O_CREATE | os.O_TRUNC, os.FileMode(0644))
 	if err != nil {
 		gf.LogError(GFARM_MSG_UNFIXED, "CompleteMultipartUpload", "OpenFile", gfarm_url_tmpname, err)
-fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload: %v\n", err)
+fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload D: %v\n", err)
 		return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 	}
 
@@ -914,34 +914,34 @@ fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload: %v\n", err)
 		partName := minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID, fmt.Sprintf("%05d", part.PartNumber))
 		err = n.copyFromPartFileAppendOrCreate(w, partName)
 		if err != nil {
-fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload: %v\n", err)
+fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload E: %v\n", err)
 			return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 		}
 	}
 
 	err = w.Close()
 	if err != nil {
-fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload: %v\n", err)
+fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload F: %v\n", err)
 		return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 	}
 	gfarm_url_name := n.gfarm_url_PathJoin(name)
 	err = gf.Rename(gfarm_url_tmpname, gfarm_url_name)
 	if err != nil {
 		gf.LogError(GFARM_MSG_UNFIXED, "CompleteMultipartUpload", "Rename", gfarm_url_name, err)
-fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload: %v\n", err)
+fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload G: %v\n", err)
 		return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 	}
 
 	fi, err := gf.Stat(gfarm_url_name)
 	if err != nil {
 		gf.LogError(GFARM_MSG_UNFIXED, "CompleteMultipartUpload", "Stat", gfarm_url_name, err)
-fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload: %v\n", err)
+fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload H: %v\n", err)
 		return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 	}
 
 	err = n.cleanupMultipartUploadDir(uploadID)
 	if err != nil {
-fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload: %v\n", err)
+fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload I: %v\n", err)
 		return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 	}
 
@@ -1014,35 +1014,39 @@ func myformat(now time.Time) string {
 }
 
 func myCopy(w io.Writer, r io.Reader) (int64, error) {
+	bufsize := 32 * 1024 * 1024
+	bufsize = 32 * 1024
 //return io.Copy(w, r)
-//return io.CopyBuffer(w, r, make([]byte, 1024 * 1024 * 32))
+//return io.CopyBuffer(w, r, make([]byte, bufsize))
 	var total int64
 	total = 0
-	buf := make([]byte, 1024 * 1024 * 32)
+	buf := make([]byte, bufsize)
 now := time.Now()
 start := now
-fmt.Fprintf(os.Stderr, "@@@ %v myCopy Start\n", myformat(start))
+//fmt.Fprintf(os.Stderr, "@@@ %v myCopy Start\n", myformat(start))
 	for {
 		len, err := r.Read(buf)
+now = time.Now()
+//fmt.Fprintf(os.Stderr, "@@@ %v (%v) myCopy Read %d bytes\n", myformat(now), now.Sub(start), len)
+		if len != 0 {
+			wrote_bytes, e := w.Write(buf[:len])
+now = time.Now()
+//fmt.Fprintf(os.Stderr, "@@@ %v (%v) myCopy Wrote %d bytes\n", myformat(now), now.Sub(start), len)
+			total += int64(wrote_bytes)
+			if e != nil {
+fmt.Fprintf(os.Stderr, "@@@ myCopy A: %v\n", e)
+				return total, e
+			}
+			myAssert(wrote_bytes == len, "wrote_bytes == len")
+		}
 		if err == io.EOF {
-			break
+now = time.Now()
+//fmt.Fprintf(os.Stderr, "@@@ %v (%v) myCopy End total %d bytes\n", myformat(now), now.Sub(start), total)
+_ = start
+			return total, nil
 		} else if err != nil {
+fmt.Fprintf(os.Stderr, "@@@ myCopy B: %v\n", err)
 			return total, err
 		}
-now = time.Now()
-fmt.Fprintf(os.Stderr, "@@@ %v (%v) myCopy Read %d bytes\n", myformat(now), now.Sub(start), len)
-		n, err := w.Write(buf[:len])
-		if err != nil {
-			return total, err
-		} else if n != len {
-fmt.Fprintf(os.Stderr, "@@@ internal error: n != len should not happen\n")
-		}
-
-now = time.Now()
-fmt.Fprintf(os.Stderr, "@@@ %v (%v) myCopy Wrote %d bytes\n", myformat(now), now.Sub(start), len)
-		total += int64(len)
 	}
-now = time.Now()
-fmt.Fprintf(os.Stderr, "@@@ %v (%v) myCopy End total %d bytes\n", myformat(now), now.Sub(start), total)
-	return total, nil
 }
