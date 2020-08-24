@@ -116,14 +116,10 @@ gfs_lgetxattr_cached	LGetXattrCached		copyFromPartFileAppendOrCreate, cleanupMul
 package gfarm
 
 import (
-//	"bytes"
 	"context"
-//	"crypto/md5"
 	"errors"
 	"fmt"
-//	"hash"
 	"io"
-//	"io/ioutil"
 	"net/http"
 	"os"
 	"path"
@@ -133,7 +129,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-//	"unsafe"
 	"github.com/minio/minio/pkg/env"
 
 	gf "github.com/minio/minio/pkg/gfarm"
@@ -158,6 +153,9 @@ const (
 	gfarmCacheSizeEnvVar = "MINIO_GFARMS3_CACHEDIR_SIZE_MB"
 
 	gfarmPartfileDigestEnvVar = "GFARMS3_PARTFILE_DIGEST"
+
+	//myCopyBufsize = 32 * 1024 * 1024
+	myCopyBufsize = 32 * 1024
 )
 
 func init() {
@@ -342,7 +340,7 @@ type gfarmController struct {
 
 type cacheController struct {
 	cacheRootdir string
-	fasterTotal, fasterLimit, fasterMax int64
+	cacheTotal, cacheLimit, cacheMax int64
 	mutex *sync.Mutex
 	enable_partfile_digest bool
 	sizes map[string] int64
@@ -705,7 +703,7 @@ func (n *gfarmObjects) GetObjectInfo(ctx context.Context, bucket, object string,
 func (n *gfarmObjects) PutObject(ctx context.Context, bucket string, object string, r *minio.PutObjReader, opts minio.ObjectOptions) (objInfo minio.ObjectInfo, err error) {
 now := time.Now()
 start := now
-fmt.Fprintf(os.Stderr, "@@@ %v PutObject %q start\n", myformat(start), object)
+fmt.Fprintf(os.Stderr, "@@@ %v PutObject %q start\n", myFormatTime(start), object)
 
 	gfarm_url_bucket := n.gfarm_url_PathJoin(gfarmSeparator, bucket)
 	_, err = gf.Stat(gfarm_url_bucket)
@@ -770,7 +768,7 @@ fmt.Fprintf(os.Stderr, "@@@ %v PutObject %q start\n", myformat(start), object)
 	}
 
 now = time.Now()
-fmt.Fprintf(os.Stderr, "@@@ %v (%v) PutObject %q end\n", myformat(now), now.Sub(start), object)
+fmt.Fprintf(os.Stderr, "@@@ %v (%v) PutObject %q end\n", myFormatTime(now), now.Sub(start), object)
 	return info, nil
 }
 
@@ -849,7 +847,7 @@ func (n *gfarmObjects) CopyObjectPart(ctx context.Context, srcBucket, srcObject,
 func (n *gfarmObjects) PutObjectPart(ctx context.Context, bucket, object, uploadID string, partID int, r *minio.PutObjReader, opts minio.ObjectOptions) (info minio.PartInfo, err error) {
 now := time.Now()
 start := now
-fmt.Fprintf(os.Stderr, "@@@ %v PutObjectPart %q start\n", myformat(start), object)
+fmt.Fprintf(os.Stderr, "@@@ %v PutObjectPart %q start\n", myFormatTime(start), object)
 	gfarm_url_bucket := n.gfarm_url_PathJoin(gfarmSeparator, bucket)
 	_, err = gf.Stat(gfarm_url_bucket)
 	if err != nil {
@@ -871,7 +869,7 @@ fmt.Fprintf(os.Stderr, "@@@ PutObjectPart B: %v\n", err)
 	info.Size = r.Reader.Size()
 
 now = time.Now()
-fmt.Fprintf(os.Stderr, "@@@ %v (%v) PutObjectPart %q end\n", myformat(now), now.Sub(start), object)
+fmt.Fprintf(os.Stderr, "@@@ %v (%v) PutObjectPart %q end\n", myFormatTime(now), now.Sub(start), object)
 
 	return info, nil
 }
@@ -973,10 +971,6 @@ fmt.Fprintf(os.Stderr, "@@@ AbortMultipartUpload: %v\n", err)
 func (n *gfarmObjects) cleanupMultipartUploadDir(uploadID string) error {
 	dirName := minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID)
 	_ = n.removeMultipartCacheWorkdir(dirName)
-/*
-@		total, _ := n.calculateCacheUsage(dirName)
-@		n.cachectl.updateCacheUsage(-total)
-*/
 	if err := n.removeMultipartGfarmWorkdir(dirName); err != nil {
 fmt.Fprintf(os.Stderr, "@@@ AbortMultipartUpload: %v\n", err)
 		return err
@@ -984,50 +978,28 @@ fmt.Fprintf(os.Stderr, "@@@ AbortMultipartUpload: %v\n", err)
 	return nil
 }
 
-/*
-@func (n *gfarmObjects) calculateCacheUsage(dirName) (int64, error) {
-@	gfarm_url_dirName := n.gfarm_url_PathJoin(dirName)
-@	entries, err := gf.ReadDir(gfarm_url_dirName)
-@	if err != nil {
-@		gf.LogError(GFARM_MSG_UNFIXED, "cleanupMultipartUploadDir", "ReadDir", gfarm_url_dirName, err)
-@		return 0, err
-@	}
-@	for _, entry := range entries {
-@		gfarm_url_dirName_entryName := n.gfarm_url_PathJoin(dirName, entry.Name())
-@		value, err := retrieveFileSize(gfarm_url_dirName_entryName)
-@		if err != nil {
-@			return 0, err
-@		}
-@		total += value
-@	}
-@	return total, nil
-@}
-*/
-
 // IsReady returns whether the layer is ready to take requests.
 func (n *gfarmObjects) IsReady(_ context.Context) bool {
 	return true
 }
 
-func myformat(now time.Time) string {
+func myFormatTime(now time.Time) string {
 	return now.UTC().Format("20060102T030405.000000Z")
 }
 
 func myCopy(w io.Writer, r io.Reader) (int64, error) {
-	bufsize := 32 * 1024 * 1024
-	bufsize = 32 * 1024
 //return io.Copy(w, r)
-//return io.CopyBuffer(w, r, make([]byte, bufsize))
+//return io.CopyBuffer(w, r, make([]byte, myCopyBufsize))
 	var total int64
 	total = 0
-	buf := make([]byte, bufsize)
+	buf := make([]byte, myCopyBufsize)
 now := time.Now()
 start := now
-//fmt.Fprintf(os.Stderr, "@@@ %v myCopy Start\n", myformat(start))
+//fmt.Fprintf(os.Stderr, "@@@ %v myCopy Start\n", myFormatTime(start))
 	for {
 		len, read_err := r.Read(buf)
 now = time.Now()
-//fmt.Fprintf(os.Stderr, "@@@ %v (%v) myCopy Read %d bytes\n", myformat(now), now.Sub(start), len)
+//fmt.Fprintf(os.Stderr, "@@@ %v (%v) myCopy Read %d bytes\n", myFormatTime(now), now.Sub(start), len)
 		if read_err != nil && read_err != io.EOF {
 fmt.Fprintf(os.Stderr, "@@@ myCopy A: %v\n", read_err)
 			return total, read_err
@@ -1035,7 +1007,7 @@ fmt.Fprintf(os.Stderr, "@@@ myCopy A: %v\n", read_err)
 		if len != 0 {
 			wrote_bytes, write_err := w.Write(buf[:len])
 now = time.Now()
-//fmt.Fprintf(os.Stderr, "@@@ %v (%v) myCopy Wrote %d bytes\n", myformat(now), now.Sub(start), len)
+//fmt.Fprintf(os.Stderr, "@@@ %v (%v) myCopy Wrote %d bytes\n", myFormatTime(now), now.Sub(start), len)
 			total += int64(wrote_bytes)
 			if write_err != nil {
 fmt.Fprintf(os.Stderr, "@@@ myCopy B: %v\n", write_err)
@@ -1045,7 +1017,7 @@ fmt.Fprintf(os.Stderr, "@@@ myCopy B: %v\n", write_err)
 		}
 		if read_err == io.EOF {
 now = time.Now()
-//fmt.Fprintf(os.Stderr, "@@@ %v (%v) myCopy End total %d bytes\n", myformat(now), now.Sub(start), total)
+//fmt.Fprintf(os.Stderr, "@@@ %v (%v) myCopy End total %d bytes\n", myFormatTime(now), now.Sub(start), total)
 _ = start
 			return total, nil
 		}

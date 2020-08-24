@@ -351,18 +351,18 @@ func gfs_pio_read(gf C.GFS_File, b *byte, len int, n *C.int) error {
 	return gfCheckError(C.gfs_pio_read(gf, unsafe.Pointer(b), C.int(len), (*C.int)(unsafe.Pointer(n))))
 }
 
-func myformat(now time.Time) string {
+/*
+func myFormatTime(now time.Time) string {
 	return now.UTC().Format("20060102T030405.000000Z")
 }
 
-/*
 func gfs_pio_write(gf C.GFS_File, b *byte, len int, n *C.int) error {
 now := time.Now()
 start := now
-fmt.Fprintf(os.Stderr, "@@@ %v gfs_pio_write Start\n", myformat(start))
+fmt.Fprintf(os.Stderr, "@@@ %v gfs_pio_write Start\n", myFormatTime(start))
 	e := gfCheckError(C.gfs_pio_write(gf, unsafe.Pointer(b), C.int(len), (*C.int)(unsafe.Pointer(n))))
 now = time.Now() 
-fmt.Fprintf(os.Stderr, "@@@ %v (%v) gfs_pio_write End wrote %d bytes\n", myformat(now), now.Sub(start), len)
+fmt.Fprintf(os.Stderr, "@@@ %v (%v) gfs_pio_write End wrote %d bytes\n", myFormatTime(now), now.Sub(start), len)
 	return e
 }
 */
