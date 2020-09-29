@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"time"
 
 	gf "github.com/minio/minio/pkg/gfarm"
 	minio "github.com/minio/minio/cmd"
@@ -16,6 +17,7 @@ import (
 func (n *gfarmObjects) createMetaTmpBucketGfarm(minioMetaTmpBucket string) error {
 //fmt.Fprintf(os.Stderr, "@@@ createMetaTmpBucketGfarm: %q\n", minioMetaTmpBucket)
 	gfarm_url_minioMetaTmpBucket := n.gfarm_url_PathJoin(gfarmSeparator, minioMetaTmpBucket)
+fmt.Fprintf(os.Stderr, "@@@ createMetaTmpBucketGfarm gf.MkdirAll %q\n", gfarm_url_minioMetaTmpBucket)
 	if err := gf.MkdirAll(gfarm_url_minioMetaTmpBucket, os.FileMode(0755)); err != nil {
 		gf.LogError(GFARM_MSG_UNFIXED, "NewGatewayLayer", "MkdirAll", gfarm_url_minioMetaTmpBucket, err)
 		return err
@@ -38,6 +40,7 @@ func (n *gfarmObjects) createMetaTmpBucketCache(minioMetaTmpBucket string) error
 func (n *gfarmObjects) createMultipartUploadDirGfarm(dirName string) error {
 //fmt.Fprintf(os.Stderr, "@@@ createMultipartUploadDirGfarm: %q\n", dirName)
 	gfarm_url_dirName := n.gfarm_url_PathJoin(dirName)
+fmt.Fprintf(os.Stderr, "@@@ createMultipartUploadDirGfarm gf.Mkdir %q\n", gfarm_url_dirName)
 	if err := gf.Mkdir(gfarm_url_dirName, os.FileMode(0755)); err != nil {
 		gf.LogError(GFARM_MSG_UNFIXED, "NewMultipartUpload", "Mkdir", gfarm_url_dirName, err)
 		return err
@@ -284,6 +287,9 @@ fmt.Fprintf(os.Stderr, "@@@ copyToCachedFile K: %v\n", close_err)
 
 func (n *gfarmObjects) copyFromCachedFile(w *gf.File, gfarm_url_partName, gfarm_cache_partName string) error {
 //fmt.Fprintf(os.Stderr, "@@@ copyFromCachedFile: %q %q\n", gfarm_url_partName, gfarm_cache_partName)
+now := time.Now()
+start := now
+fmt.Fprintf(os.Stderr, "@@@ %v copyFromCachedFile start %q\n", myFormatTime(start), gfarm_url_partName)
 	c := n.cachectl
 
 	buf := make([]byte, myCopyBufsize)
@@ -300,6 +306,9 @@ fmt.Fprintf(os.Stderr, "@@@ copyFromCachedFile A: %v\n", err)
 		hash = md5.New()
 	}
 
+now = time.Now()
+fmt.Fprintf(os.Stderr, "@@@ %v (%v) copyFromCachedFile  %q AAA\n", myFormatTime(now), now.Sub(start), gfarm_url_partName)
+
 	_, err = gf.Stat(gfarm_url_partName)
 	if err == nil {
 		r_gfarm, err := n.openGfarmFile(gfarm_url_partName)
@@ -308,11 +317,20 @@ fmt.Fprintf(os.Stderr, "@@@ copyFromCachedFile B: %v\n", err)
 			return err
 		}
 
+now = time.Now()
+fmt.Fprintf(os.Stderr, "@@@ %v (%v) copyFromCachedFile  %q BBB\n", myFormatTime(now), now.Sub(start), gfarm_url_partName)
+
 		defer r_gfarm.Close()
 
 		cacheFileSize := n.retrieveFileSize(gfarm_cache_partName)
 
+now = time.Now()
+fmt.Fprintf(os.Stderr, "@@@ %v (%v) copyFromCachedFile  %q CCC\n", myFormatTime(now), now.Sub(start), gfarm_url_partName)
+
 		total, err := myCopyWithHashLimit(w, r_cache, hash, cacheFileSize, buf)
+
+now = time.Now()
+fmt.Fprintf(os.Stderr, "@@@ %v (%v) copyFromCachedFile  %q DDD\n", myFormatTime(now), now.Sub(start), gfarm_url_partName)
 
 		if total != cacheFileSize {
 fmt.Fprintf(os.Stderr, "@@@ copyFromCachedFile C total != cacheFileSize: %v\n", io.ErrUnexpectedEOF)
@@ -325,12 +343,18 @@ fmt.Fprintf(os.Stderr, "@@@ copyFromCachedFile D: %v\n", err)
 			return err
 		}
 
+now = time.Now()
+fmt.Fprintf(os.Stderr, "@@@ %v (%v) copyFromCachedFile  %q EEE\n", myFormatTime(now), now.Sub(start), gfarm_url_partName)
+
 	} else {
 		_, err = myCopyWithHash(w, r_cache, hash, buf)
 		if err != nil {
 fmt.Fprintf(os.Stderr, "@@@ copyFromCachedFile E: %v\n", err)
 			return err
 		}
+
+now = time.Now()
+fmt.Fprintf(os.Stderr, "@@@ %v (%v) copyFromCachedFile  %q FFF\n", myFormatTime(now), now.Sub(start), gfarm_url_partName)
 	}
 
 	if hash != nil {
@@ -344,6 +368,14 @@ fmt.Fprintf(os.Stderr, "@@@ copyFromCachedFile F: hash check failed: %v %v %v\n"
 fmt.Fprintf(os.Stderr, "@@@ copyFromCachedFile F: hash check OK\n")
 		}
 	}
+
+now = time.Now()
+fmt.Fprintf(os.Stderr, "@@@ %v (%v) copyFromCachedFile  %q GGG\n", myFormatTime(now), now.Sub(start), gfarm_url_partName)
+
+now = time.Now()
+fmt.Fprintf(os.Stderr, "@@@ %v (%v) copyFromCachedFile  %q end\n", myFormatTime(now), now.Sub(start), gfarm_url_partName)
+
+gf.ShowStat()
 
 	return nil
 }
@@ -480,14 +512,27 @@ func myWriteWithHash(w io.Writer, hash hash.Hash, buf []byte) (int, error) {
 func myCopyWithHash(w io.Writer, r io.Reader, hash hash.Hash, buf []byte) (int64, error) {
 //fmt.Fprintf(os.Stderr, "@@@ myCopyWithHash\n")
 	var total int64 = 0
+var read_time, write_time time.Duration = 0, 0
+now := time.Now()
+start := now
+fmt.Fprintf(os.Stderr, "@@@ %v myCopyWithHash start\n", myFormatTime(start))
+lap := now
 	for {
 		len, read_err := r.Read(buf)
 		if read_err != nil && read_err != io.EOF {
 fmt.Fprintf(os.Stderr, "@@@ myCopyWithHash A: %v\n", read_err)
 			return total, read_err
 		}
+
+now = time.Now()
+read_time += now.Sub(lap)
+lap = now
 		if len != 0 {
 			wrote_bytes, write_err := myWriteWithHash(w, hash, buf[:len])
+
+now = time.Now()
+write_time += now.Sub(lap)
+lap = now
 			total += int64(wrote_bytes)
 			if write_err != nil {
 fmt.Fprintf(os.Stderr, "@@@ myCopyWithHash B: %v\n", write_err)
@@ -496,6 +541,7 @@ fmt.Fprintf(os.Stderr, "@@@ myCopyWithHash B: %v\n", write_err)
 			myAssert(wrote_bytes == len, "wrote_bytes == len")
 		}
 		if read_err == io.EOF {
+fmt.Fprintf(os.Stderr, "@@@ myCopyWithHash read_time = %v write_time = %v\n", read_time, write_time)
 			return total, nil
 		}
 	}
@@ -504,17 +550,31 @@ fmt.Fprintf(os.Stderr, "@@@ myCopyWithHash B: %v\n", write_err)
 func myCopyWithHashLimit(w io.Writer, r io.Reader, hash hash.Hash, limit int64, buf []byte) (int64, error) {
 //fmt.Fprintf(os.Stderr, "@@@ myCopyWithHashLimit\n")
 	var total int64 = 0
+var read_time, write_time time.Duration = 0, 0
+now := time.Now()
+start := now
+fmt.Fprintf(os.Stderr, "@@@ %v myCopyWithHashLimit start\n", myFormatTime(start))
+lap := now
+
 	for {
 		len, read_err := r.Read(buf)
 		if read_err != nil && read_err != io.EOF {
 fmt.Fprintf(os.Stderr, "@@@ myCopyWithHashLimit A: %v\n", read_err)
 			return total, read_err
 		}
+
+now = time.Now()
+read_time += now.Sub(lap)
+lap = now
 		if len != 0 {
 			if limit < total + int64(len) {
 				len = int(limit - total)
 			}
 			wrote_bytes, write_err := myWriteWithHash(w, hash, buf[:len])
+
+now = time.Now()
+write_time += now.Sub(lap)
+lap = now
 			total += int64(wrote_bytes)
 			if write_err != nil {
 fmt.Fprintf(os.Stderr, "@@@ myCopyWithHashLimit B: %v\n", write_err)
@@ -523,11 +583,18 @@ fmt.Fprintf(os.Stderr, "@@@ myCopyWithHashLimit B: %v\n", write_err)
 			myAssert(wrote_bytes == len, "wrote_bytes == len")
 			if limit <= total {
 				myAssert(limit == total, "limit == total")
+fmt.Fprintf(os.Stderr, "@@@ myCopyWithHashLimit read_time = %v write_time = %v\n", read_time, write_time)
+now = time.Now()
+fmt.Fprintf(os.Stderr, "@@@ %v (%v) myCopyWithHashLimit  end\n", myFormatTime(now), now.Sub(start))
+
 				return total, nil
 			}
 		}
 		if read_err == io.EOF {
 			myAssert(limit == total, "limit == total")
+fmt.Fprintf(os.Stderr, "@@@ myCopyWithHashLimit read_time = %v write_time = %v\n", read_time, write_time)
+now = time.Now()
+fmt.Fprintf(os.Stderr, "@@@ %v (%v) myCopyWithHashLimit  end\n", myFormatTime(now), now.Sub(start))
 			return total, nil
 		}
 	}

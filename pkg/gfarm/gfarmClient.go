@@ -28,7 +28,7 @@ import (
 	"path"
 	"time"
 	"unsafe"
-//"fmt"
+"fmt"
 )
 
 const (
@@ -42,11 +42,18 @@ type File struct {
 	flags int
 }
 
+const (
+	GFS_R_OK = C.GFS_R_OK
+	GFS_W_OK = C.GFS_W_OK
+	GFS_X_OK = C.GFS_X_OK
+)
+
 type FileInfo struct {
 	name string
 	st_size C.gfarm_off_t
 	st_mode C.gfarm_mode_t
 	st_mtimespec C.struct_gfarm_timespec
+	effective_perm int	// GFS_R_OK | GFS_W_OK | GFS_X_OK
 }
 
 func IsNotExist(err error) bool {
@@ -84,7 +91,12 @@ func Stat(path string) (FileInfo, error) {
 		return FileInfo{}, err
 	}
 	defer gfs_stat_free(&sb)
-	return FileInfo{path, sb.st_size, sb.st_mode, sb.st_mtimespec}, nil
+	effective_perm, err := get_effective_perm(path)
+	if err != nil {
+		return FileInfo{}, err
+	}
+//fmt.Fprintf(os.Stderr, "@@@ Stat: path = %q, effective_perm == %v\n", path, effective_perm)
+	return FileInfo{path, sb.st_size, sb.st_mode, sb.st_mtimespec, effective_perm}, nil
 }
 
 func OpenFile(path string, flags int, perm os.FileMode) (*File, error) {
@@ -143,12 +155,23 @@ func (f *File) Read(b []byte) (int, error) {
 
 func (f *File) Write(b []byte) (int, error) {
 	var n C.int
+start := time.Now()
 	err := gfs_pio_write(f.gf, &b[0], len(b), &n)
 	if err != nil {
 		return 0, err
 	}
-	uncache_path(f.path)
+now := time.Now()
+lap := now
+pio_write_time += now.Sub(start)
+//	uncache_path(f.path)
+now = time.Now()
+uncache_path_time += now.Sub(lap)
 	return int(n), nil
+}
+var pio_write_time, uncache_path_time time.Duration = 0, 0
+
+func ShowStat() () {
+fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ pio_write_time %v  uncache_path_time%v\n", pio_write_time, uncache_path_time)
 }
 
 func Rename(from, to string) error {
@@ -227,10 +250,22 @@ func ReadDir(dirname string) ([]FileInfo, error) {
 		if err != nil {
 			return nil, err
 		}
-		fi := FileInfo{basename, sb.st_size, sb.st_mode, sb.st_mtimespec}
+		fi := FileInfo{basename, sb.st_size, sb.st_mode, sb.st_mtimespec, sb.effective_perm}
 		r = append(r, fi)
 	}
 	return r, nil
+}
+
+func get_effective_perm(path string) (int, error) {
+	return 7, nil
+	var size uintptr = 1
+	var value [1]byte
+	if err := LGetXattrCached(path, GFARM_EA_EFFECTIVE_PERM, unsafe.Pointer(&value[0]), &size); err != nil {
+//fmt.Fprintf(os.Stderr, "@@@ get_effective_perm: %s %s: %v\n", path, GFARM_EA_EFFECTIVE_PERM, err)
+		return 0, err
+	}
+//fmt.Fprintf(os.Stderr, "@@@ get_effective_perm: %s %s => %v\n", path, GFARM_EA_EFFECTIVE_PERM, value)
+	return int(value[0]), nil
 }
 
 func (r FileInfo) Name() string {
@@ -251,6 +286,11 @@ func (r FileInfo) ModTime() time.Time {
 
 func (r FileInfo) IsDir() bool {
 	return gfarm_s_isdir(r.st_mode)
+}
+
+func (r FileInfo) Access(flag int) bool {
+//fmt.Fprintf(os.Stderr, "@@@ Access: r.effective_perm == %v, flag = %v\n", r.effective_perm, flag)
+	return r.effective_perm & flag != 0
 }
 
 type FsInfo struct {
@@ -303,6 +343,12 @@ func Gfarm_initialize() error {
 func Gfarm_terminate() error {
 //void gflog_terminate(void)
 	return gfCheckError(C.gfarm_terminate())
+}
+
+func Gfarm_xattr_caching_pattern_add(pattern string) () {
+	cpattern := C.CString(pattern)
+	defer C.free(unsafe.Pointer(cpattern))
+	C.gfarm_xattr_caching_pattern_add(cpattern)
 }
 
 func gfs_stat(path string, sb *C.struct_gfs_stat) error {
@@ -610,6 +656,7 @@ func gflog_fatal(msg_no C.int, format ...string) () {
 const (
 	GFS_XATTR_CREATE = C.GFS_XATTR_CREATE
 	GFS_XATTR_REPLACE = C.GFS_XATTR_REPLACE
+	GFARM_EA_EFFECTIVE_PERM = C.GFARM_EA_EFFECTIVE_PERM
 )
 
 func LSetXattr(path, name string, value unsafe.Pointer, size uintptr, flags int) error {

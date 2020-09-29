@@ -118,6 +118,7 @@ package gfarm
 import (
 	"context"
 	"errors"
+	"os/exec"
 	"fmt"
 	"io"
 	"net/http"
@@ -228,13 +229,35 @@ func (g *GFARM) Name() string {
 	return gfarmBackend
 }
 
+func isVirtualPath(s3path, vipath string) bool {
+	vipathLen := len(vipath)
+	s3pathLen := len(s3path)
+
+	if s3pathLen < vipathLen {
+		return false
+	}
+	if strings.HasPrefix(s3path, vipath) {
+		if s3pathLen == vipathLen {
+			return true
+		}
+		if (s3path[vipathLen] == '/') {
+			return true
+		}
+		return false
+	}
+	return false
+}
+
 func (n *gfarmObjects) gfarm_url_PathJoin(pathComponents ...string) string {
 	var gfarmPath string
 	s3path := minio.PathJoin(pathComponents...)
-	if strings.HasPrefix(s3path, n.gfarmctl.gfarmSharedVirtualNamePath) {
+
+	if isVirtualPath(s3path, n.gfarmctl.gfarmSharedVirtualNamePath) {
 		gfarmPath = minio.PathJoin(n.gfarmctl.gfarmSharedDir, "..", s3path[len(n.gfarmctl.gfarmSharedVirtualNamePath):])
+//fmt.Fprintf(os.Stderr, "@@@ VIRT s3path: %q => gfarmPath: %q\n", s3path, gfarmPath)
 	} else {
 		gfarmPath = minio.PathJoin(n.gfarmctl.gfarmSharedDir, s3path)
+//fmt.Fprintf(os.Stderr, "@@@ REAL s3path: %q => gfarmPath: %q\n", s3path, gfarmPath)
 	}
 	result := n.gfarmctl.gfarmScheme + gfarmPath
 	return result
@@ -265,6 +288,7 @@ fmt.Fprintf(os.Stderr, "@@@ cacheCapacity: %v\n", cacheCapacity)
 	cacheRootdir = strings.TrimSuffix(cacheRootdir, gfarmSeparator)
 
 	gfarmSharedVirtualNamePath := minio.PathJoin("/", gfarmSharedVirtualName)
+fmt.Fprintf(os.Stderr, "@@@ gfarmSharedVirtualNamePath: %q\n", gfarmSharedVirtualNamePath)
 
 	err := gf.Gfarm_initialize()
 	if err != nil {
@@ -272,7 +296,9 @@ fmt.Fprintf(os.Stderr, "@@@ cacheCapacity: %v\n", cacheCapacity)
 		return nil, err
 	}
 
-	gfarmctl := &gfarmController{gfarmScheme, gfarmSharedDir, gfarmSharedVirtualNamePath}
+	gf.Gfarm_xattr_caching_pattern_add(gf.GFARM_EA_EFFECTIVE_PERM)
+
+	gfarmctl := &gfarmController{gfarmScheme, gfarmSharedDir, gfarmSharedVirtualNamePath, make(map[string] string), &sync.Mutex{}}
 	var cachectl *cacheController = nil
 	if cacheRootdir != "" && cacheCapacity != 0 {
 		partfile_digest := env.Get(gfarmPartfileDigestEnvVar, "")
@@ -336,6 +362,8 @@ func (n *gfarmObjects) StorageInfo(ctx context.Context, _ bool) minio.StorageInf
 
 type gfarmController struct {
 	gfarmScheme, gfarmSharedDir, gfarmSharedVirtualNamePath string
+	stat map[string] string
+	statMutex *sync.Mutex
 }
 
 type cacheController struct {
@@ -422,10 +450,21 @@ func (n *gfarmObjects) MakeBucketWithLocation(ctx context.Context, bucket, locat
 		return minio.BucketNameInvalid{Bucket: bucket}
 	}
 	gfarm_url_bucket := n.gfarm_url_PathJoin(gfarmSeparator, bucket)
+fmt.Fprintf(os.Stderr, "@@@ MakeBucketWithLocation gf.Mkdir %q\n", gfarm_url_bucket)
 	err := gfarmToObjectErr(ctx, gf.Mkdir(gfarm_url_bucket, os.FileMode(0755)), bucket)
 	if err != nil {
 		gf.LogError(GFARM_MSG_UNFIXED, "MakeBucketWithLocation", "Mkdir", gfarm_url_bucket, err)
 	}
+	if err = setDefaultACL(gfarm_url_bucket); err != nil {
+		gf.LogError(GFARM_MSG_UNFIXED, "MakeBucketWithLocation", "setDefaultACL", gfarm_url_bucket, err)
+	}
+	return err
+}
+
+func setDefaultACL(path string) error {
+ 	default_acl := "group::---,other::---,default:group::---,default:other::---"
+fmt.Fprintf(os.Stderr, "@@@ setDefaultACL %q %q %q %q\n", "gfsetfacl", "-m", default_acl, path)
+	err := exec.Command("gfsetfacl", "-m", default_acl, path).Run()
 	return err
 }
 
@@ -443,8 +482,10 @@ func (n *gfarmObjects) GetBucketInfo(ctx context.Context, bucket string) (bi min
 	}, nil
 }
 
+/* called for bucket listing (at top directory only) */
 func (n *gfarmObjects) ListBuckets(ctx context.Context) (buckets []minio.BucketInfo, err error) {
 	gfarm_url_root := n.gfarm_url_PathJoin(gfarmSeparator)
+fmt.Fprintf(os.Stderr, "@@@ LB gfarmSeparator=%q\n", gfarmSeparator)
 	entries, err := gf.ReadDir(gfarm_url_root)
 	if err != nil {
 		logger.LogIf(ctx, err)
@@ -457,11 +498,18 @@ func (n *gfarmObjects) ListBuckets(ctx context.Context) (buckets []minio.BucketI
 		if isReservedOrInvalidBucket(entry.Name(), false) {
 			continue
 		}
+
+		if !entry.Access(gf.GFS_R_OK) {
+fmt.Fprintf(os.Stderr, "@@@ LB %q is inaccessible.\n", entry.Name())
+			continue
+		}
+
 		buckets = append(buckets, minio.BucketInfo{
 			Name: entry.Name(),
 			// As gfarm.Stat() doesnt carry CreatedTime, use ModTime() as CreatedTime.
 			Created: entry.ModTime(),
 		})
+fmt.Fprintf(os.Stderr, "@@@ LB entry.Name=%q\n", entry.Name())
 	}
 
 	// Sort bucket infos by bucket name.
@@ -469,11 +517,14 @@ func (n *gfarmObjects) ListBuckets(ctx context.Context) (buckets []minio.BucketI
 	return buckets, nil
 }
 
+/* called for objects listing (in a bucket) */
 func (n *gfarmObjects) listDirFactory() minio.ListDirFunc {
 	// listDir - lists all the entries at a given prefix and given entry in the prefix.
 	listDir := func(bucket, prefixDir, prefixEntry string) (emptyDir bool, entries []string) {
 
 		gfarm_url_bucket_prefixDir := n.gfarm_url_PathJoin(gfarmSeparator, bucket, prefixDir)
+fmt.Fprintf(os.Stderr, "@@@ LD bucket=%q prefixDir=%q\n", bucket, prefixDir)
+
 		fis, err := gf.ReadDir(gfarm_url_bucket_prefixDir)
 		if err != nil {
 			if os.IsNotExist(err) || gf.IsNotExist(err) {
@@ -493,10 +544,17 @@ func (n *gfarmObjects) listDirFactory() minio.ListDirFunc {
 			if isReservedOrInvalidBucket(fi.Name(), false) {
 				continue
 			}
+
+			if !fi.Access(gf.GFS_R_OK) {
+fmt.Fprintf(os.Stderr, "@@@ LD %q is inaccessible.\n", fi.Name())
+				continue
+			}
 			if fi.IsDir() {
 				entries = append(entries, fi.Name() + gfarmSeparator)
+fmt.Fprintf(os.Stderr, "@@@ LD fi.Name=%q/\n", fi.Name())
 			} else {
 				entries = append(entries, fi.Name())
+fmt.Fprintf(os.Stderr, "@@@ LD fi.Name=%q\n", fi.Name())
 			}
 		}
 		return false, minio.FilterMatchingPrefix(entries, prefixEntry)
@@ -660,6 +718,7 @@ func (n *gfarmObjects) GetObject(ctx context.Context, bucket, key string, startO
 
 func (n *gfarmObjects) isObjectDir(ctx context.Context, bucket, object string) bool {
 	gfarm_url_bucket_object := n.gfarm_url_PathJoin(gfarmSeparator, bucket, object)
+fmt.Fprintf(os.Stderr, "@@@ OD bucket=%q object=%q\n", bucket, object)
 	fis, err := gf.ReadDir(gfarm_url_bucket_object)
 	if err != nil {
 		if os.IsNotExist(err) || gf.IsNotExist(err) {
@@ -718,6 +777,7 @@ fmt.Fprintf(os.Stderr, "@@@ %v PutObject %q start\n", myFormatTime(start), objec
 	gfarm_url_name := n.gfarm_url_PathJoin(name)
 	if strings.HasSuffix(object, gfarmSeparator) && r.Size() == 0 {
 		//gfarm_url_name := n.gfarm_url_PathJoin(name)
+fmt.Fprintf(os.Stderr, "@@@ PutObject gf.MkdirAll %q\n", gfarm_url_name)
 		if err = gf.MkdirAll(gfarm_url_name, os.FileMode(0755)); err != nil {
 			gf.LogError(GFARM_MSG_UNFIXED, "PutObject", "MkdirAll", gfarm_url_name, err)
 			n.deleteObject(minio.PathJoin(gfarmSeparator, bucket), name)
@@ -739,6 +799,7 @@ fmt.Fprintf(os.Stderr, "@@@ %v PutObject %q start\n", myFormatTime(start), objec
 		dir := path.Dir(name)
 		if dir != "" {
 			gfarm_url_dir := n.gfarm_url_PathJoin(dir)
+fmt.Fprintf(os.Stderr, "@@@ PutObject gf.MkdirAll %q\n", gfarm_url_dir)
 			if err = gf.MkdirAll(gfarm_url_dir, os.FileMode(0755)); err != nil {
 				gf.LogError(GFARM_MSG_UNFIXED, "PutObject", "MkdirAll", gfarm_url_dir, err)
 				w.Close()
@@ -773,6 +834,9 @@ fmt.Fprintf(os.Stderr, "@@@ %v (%v) PutObject %q end\n", myFormatTime(now), now.
 }
 
 func (n *gfarmObjects) NewMultipartUpload(ctx context.Context, bucket string, object string, opts minio.ObjectOptions) (uploadID string, err error) {
+now := time.Now()
+start := now
+fmt.Fprintf(os.Stderr, "@@@ %v MultipartUpload start %q\n", myFormatTime(start), "---")
 	gfarm_url_bucket := n.gfarm_url_PathJoin(gfarmSeparator, bucket)
 	_, err = gf.Stat(gfarm_url_bucket)
 	if err != nil {
@@ -792,7 +856,27 @@ fmt.Fprintf(os.Stderr, "@@@ NewMultipartUpload: %v\n", err)
 fmt.Fprintf(os.Stderr, "@@@ NewMultipartUpload: %v\n", err)
 		return uploadID, gfarmToObjectErr(ctx, err, bucket)
 	}
+
+n.setStat(bucket + uploadID, "0")
+now = time.Now()
+fmt.Fprintf(os.Stderr, "@@@ %v (%v) MultipartUpload  %q end\n", myFormatTime(now), now.Sub(start), uploadID)
+
 	return uploadID, nil
+}
+
+func (n *gfarmObjects) setStat(key, value string) () {
+	c := n.gfarmctl
+	c.statMutex.Lock()
+	c.stat[key] = value
+	c.statMutex.Unlock()
+}
+
+func (n *gfarmObjects) getStat(key string) string {
+	return n.gfarmctl.stat[key]
+}
+
+func (n *gfarmObjects) delStat(key string) () {
+	delete(n.gfarmctl.stat, key)
 }
 
 func (n *gfarmObjects) ListMultipartUploads(ctx context.Context, bucket string, prefix string, keyMarker string, uploadIDMarker string, delimiter string, maxUploads int) (lmi minio.ListMultipartsInfo, err error) {
@@ -875,6 +959,10 @@ fmt.Fprintf(os.Stderr, "@@@ %v (%v) PutObjectPart %q end\n", myFormatTime(now), 
 }
 
 func (n *gfarmObjects) CompleteMultipartUpload(ctx context.Context, bucket, object, uploadID string, parts []minio.CompletePart, opts minio.ObjectOptions) (objInfo minio.ObjectInfo, err error) {
+now := time.Now()
+start := now
+fmt.Fprintf(os.Stderr, "@@@ %v CompleteMultipartUpload start %q\n", myFormatTime(start), uploadID)
+logger.LogIf(ctx, fmt.Errorf("@@@ %v CompleteMultipartUpload start %q\n", myFormatTime(start), uploadID))
 	gfarm_url_bucket := n.gfarm_url_PathJoin(gfarmSeparator, bucket)
 	_, err = gf.Stat(gfarm_url_bucket)
 	if err != nil {
@@ -892,6 +980,7 @@ fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload B: %v\n", err)
 	dir := path.Dir(name)
 	if dir != "" {
 		gfarm_url_dir := n.gfarm_url_PathJoin(dir)
+fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload gf.MkdirAll %q\n", gfarm_url_dir)
 		if err = gf.MkdirAll(gfarm_url_dir, os.FileMode(0755)); err != nil {
 			gf.LogError(GFARM_MSG_UNFIXED, "CompleteMultipartUpload", "MkdirAll", gfarm_url_dir, err)
 fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload C: %v\n", err)
@@ -910,6 +999,7 @@ fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload D: %v\n", err)
 
 	for _, part := range parts {
 		partName := minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID, fmt.Sprintf("%05d", part.PartNumber))
+fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ copy to %q\n", gfarm_url_tmpname)
 		err = n.copyFromPartFileAppendOrCreate(w, partName)
 		if err != nil {
 fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload E: %v\n", err)
@@ -946,6 +1036,12 @@ fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload I: %v\n", err)
 	// Calculate s3 compatible md5sum for complete multipart.
 	s3MD5 := minio.ComputeCompleteMultipartMD5(parts)
 
+fmt.Fprintf(os.Stderr, "@@@ CompleteMultipartUpload %q => %q\n", bucket + uploadID, n.getStat(bucket + uploadID))
+n.delStat(bucket + uploadID)
+
+now = time.Now()
+fmt.Fprintf(os.Stderr, "@@@ %v (%v) CompleteMultipartUpload  %q end\n", myFormatTime(now), now.Sub(start), uploadID)
+
 	return minio.ObjectInfo{
 		Bucket:  bucket,
 		Name:    object,
@@ -965,6 +1061,8 @@ func (n *gfarmObjects) AbortMultipartUpload(ctx context.Context, bucket, object,
 fmt.Fprintf(os.Stderr, "@@@ AbortMultipartUpload: %v\n", err)
 		return gfarmToObjectErr(ctx, err, bucket)
 	}
+fmt.Fprintf(os.Stderr, "@@@ AbortMultipartUpload %q => %q\n", bucket + uploadID, n.getStat(bucket + uploadID))
+n.delStat(bucket + uploadID)
 	return gfarmToObjectErr(ctx, n.cleanupMultipartUploadDir(uploadID), bucket, object, uploadID)
 }
 
