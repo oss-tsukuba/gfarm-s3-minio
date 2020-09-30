@@ -464,6 +464,7 @@ fmt.Fprintf(os.Stderr, "@@@ MakeBucketWithLocation gf.Mkdir %q\n", gfarm_url_buc
 func setDefaultACL(path string) error {
  	default_acl := "group::---,other::---,default:group::---,default:other::---"
 fmt.Fprintf(os.Stderr, "@@@ setDefaultACL %q %q %q %q\n", "gfsetfacl", "-m", default_acl, path)
+	//XXX as we have just created a new directory, "-R" is not required here.
 	err := exec.Command("gfsetfacl", "-m", default_acl, path).Run()
 	return err
 }
