@@ -466,7 +466,10 @@ func setDefaultACL(path string) error {
 fmt.Fprintf(os.Stderr, "@@@ setDefaultACL %q %q %q %q\n", "gfsetfacl", "-m", default_acl, path)
 	//XXX as we have just created a new directory, "-R" is not required here.
 	err := exec.Command("gfsetfacl", "-m", default_acl, path).Run()
-	return err
+	if err != nil {
+		return nil	// ignore all errors!!!
+	}
+	return nil
 }
 
 func (n *gfarmObjects) GetBucketInfo(ctx context.Context, bucket string) (bi minio.BucketInfo, err error) {
