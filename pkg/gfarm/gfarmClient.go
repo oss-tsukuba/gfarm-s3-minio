@@ -28,7 +28,6 @@ import (
 	"path"
 	"time"
 	"unsafe"
-"fmt"
 )
 
 const (
@@ -95,7 +94,6 @@ func Stat(path string) (FileInfo, error) {
 	if err != nil {
 		return FileInfo{}, err
 	}
-//fmt.Fprintf(os.Stderr, "@@@ Stat: path = %q, effective_perm == %v\n", path, effective_perm)
 	return FileInfo{path, sb.st_size, sb.st_mode, sb.st_mtimespec, effective_perm}, nil
 }
 
@@ -155,23 +153,12 @@ func (f *File) Read(b []byte) (int, error) {
 
 func (f *File) Write(b []byte) (int, error) {
 	var n C.int
-start := time.Now()
 	err := gfs_pio_write(f.gf, &b[0], len(b), &n)
 	if err != nil {
 		return 0, err
 	}
-now := time.Now()
-lap := now
-pio_write_time += now.Sub(start)
 //	uncache_path(f.path)
-now = time.Now()
-uncache_path_time += now.Sub(lap)
 	return int(n), nil
-}
-var pio_write_time, uncache_path_time time.Duration = 0, 0
-
-func ShowStat() () {
-fmt.Fprintf(os.Stderr, "@@@ @@@ @@@ pio_write_time %v  uncache_path_time%v\n", pio_write_time, uncache_path_time)
 }
 
 func Rename(from, to string) error {
@@ -257,14 +244,12 @@ func ReadDir(dirname string) ([]FileInfo, error) {
 }
 
 func get_effective_perm(path string) (int, error) {
-	return 7, nil
+//	return 7, nil
 	var size uintptr = 1
 	var value [1]byte
 	if err := LGetXattrCached(path, GFARM_EA_EFFECTIVE_PERM, unsafe.Pointer(&value[0]), &size); err != nil {
-//fmt.Fprintf(os.Stderr, "@@@ get_effective_perm: %s %s: %v\n", path, GFARM_EA_EFFECTIVE_PERM, err)
 		return 0, err
 	}
-//fmt.Fprintf(os.Stderr, "@@@ get_effective_perm: %s %s => %v\n", path, GFARM_EA_EFFECTIVE_PERM, value)
 	return int(value[0]), nil
 }
 
@@ -289,7 +274,6 @@ func (r FileInfo) IsDir() bool {
 }
 
 func (r FileInfo) Access(flag int) bool {
-//fmt.Fprintf(os.Stderr, "@@@ Access: r.effective_perm == %v, flag = %v\n", r.effective_perm, flag)
 	return r.effective_perm & flag != 0
 }
 
@@ -332,7 +316,7 @@ func gfCheckError(code C.int) error {
 }
 
 func Gfarm_initialize() error {
-//void gflog_initialize(void)
+//	gflog_initialize()
 	syslog_priority := gflog_syslog_name_to_priority(GFARM_S3_SYSLOG_PRIORITY_DEBUG)
 	gflog_set_priority_level(syslog_priority)
 	syslog_facility := gflog_syslog_name_to_facility(GFARM_S3_SYSLOG_FACILITY_DEFAULT)
@@ -341,7 +325,7 @@ func Gfarm_initialize() error {
 }
 
 func Gfarm_terminate() error {
-//void gflog_terminate(void)
+//	gflog_terminate()
 	return gfCheckError(C.gfarm_terminate())
 }
 
@@ -396,22 +380,6 @@ func gfs_pio_pread(gf C.GFS_File, b *byte, len int, off int64, n *C.int) error {
 func gfs_pio_read(gf C.GFS_File, b *byte, len int, n *C.int) error {
 	return gfCheckError(C.gfs_pio_read(gf, unsafe.Pointer(b), C.int(len), (*C.int)(unsafe.Pointer(n))))
 }
-
-/*
-func myFormatTime(now time.Time) string {
-	return now.UTC().Format("20060102T030405.000000Z")
-}
-
-func gfs_pio_write(gf C.GFS_File, b *byte, len int, n *C.int) error {
-now := time.Now()
-start := now
-fmt.Fprintf(os.Stderr, "@@@ %v gfs_pio_write Start\n", myFormatTime(start))
-	e := gfCheckError(C.gfs_pio_write(gf, unsafe.Pointer(b), C.int(len), (*C.int)(unsafe.Pointer(n))))
-now = time.Now() 
-fmt.Fprintf(os.Stderr, "@@@ %v (%v) gfs_pio_write End wrote %d bytes\n", myFormatTime(now), now.Sub(start), len)
-	return e
-}
-*/
 
 func gfs_pio_write(gf C.GFS_File, b *byte, len int, n *C.int) error {
 	return gfCheckError(C.gfs_pio_write(gf, unsafe.Pointer(b), C.int(len), (*C.int)(unsafe.Pointer(n))))
