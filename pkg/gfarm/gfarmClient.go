@@ -92,7 +92,8 @@ func Stat(path string) (FileInfo, error) {
 	defer gfs_stat_free(&sb)
 	effective_perm, err := get_effective_perm(path)
 	if err != nil {
-		return FileInfo{}, err
+		effective_perm = GFS_R_OK | GFS_W_OK | GFS_X_OK
+		//return FileInfo{}, err
 	}
 	return FileInfo{path, sb.st_size, sb.st_mode, sb.st_mtimespec, effective_perm}, nil
 }
@@ -244,7 +245,6 @@ func ReadDir(dirname string) ([]FileInfo, error) {
 }
 
 func get_effective_perm(path string) (int, error) {
-//	return 7, nil
 	var size uintptr = 1
 	var value [1]byte
 	if err := LGetXattrCached(path, GFARM_EA_EFFECTIVE_PERM, unsafe.Pointer(&value[0]), &size); err != nil {
