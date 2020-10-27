@@ -32,7 +32,7 @@ import (
 
 const (
 	o_accmode = os.O_RDONLY | os.O_WRONLY | os.O_RDWR
-	GFARM_MSG_UNFIXED = 4000000
+	GFARM_MSG_UNFIXED = C.GFARM_MSG_UNFIXED
 )
 
 type File struct {
