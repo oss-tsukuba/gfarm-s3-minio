@@ -534,10 +534,6 @@ func (n *gfarmObjects) listDirFactory() minio.ListDirFunc {
 			return true, nil
 		}
 		for _, fi := range fis {
-			if isReservedOrInvalidBucket(fi.Name(), false) {
-				continue
-			}
-
 			if !fi.Access(gf.GFS_R_OK) {
 				continue
 			}
