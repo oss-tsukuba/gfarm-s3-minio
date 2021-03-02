@@ -293,7 +293,7 @@ func (g *GFARM) NewGatewayLayer(creds auth.Credentials) (minio.ObjectLayer, erro
 
 	gf.Gfarm_xattr_caching_pattern_add(gf.GFARM_EA_EFFECTIVE_PERM)
 
-	gfarmctl := &gfarmController{gfarmScheme, gfarmSharedDir, gfarmSharedVirtualNamePath, make(map[string] string), &sync.Mutex{}}
+	gfarmctl := &gfarmController{gfarmScheme, gfarmSharedDir, gfarmSharedVirtualNamePath, gfarmSharedVirtualName, make(map[string] string), &sync.Mutex{}}
 	var cachectl *cacheController = nil
 	if cacheRootdir != "" && cacheCapacity != 0 {
 		partfile_digest := env.Get(gfarmPartfileDigestEnvVar, "")
@@ -356,7 +356,7 @@ func (n *gfarmObjects) StorageInfo(ctx context.Context, _ bool) minio.StorageInf
 }
 
 type gfarmController struct {
-	gfarmScheme, gfarmSharedDir, gfarmSharedVirtualNamePath string
+	gfarmScheme, gfarmSharedDir, gfarmSharedVirtualNamePath, gfarmSharedVirtualName string
 	stat map[string] string
 	statMutex *sync.Mutex
 }
@@ -482,6 +482,11 @@ func (n *gfarmObjects) GetBucketInfo(ctx context.Context, bucket string) (bi min
 /* called for bucket listing (at top directory only) */
 func (n *gfarmObjects) ListBuckets(ctx context.Context) (buckets []minio.BucketInfo, err error) {
 	gfarm_url_root := n.gfarm_url_PathJoin(gfarmSeparator)
+	s, err := gf.Stat(n.gfarm_url_PathJoin())
+	if err != nil {
+		return nil, gfarmToObjectErr(ctx, err)
+	}
+
 	entries, err := gf.ReadDir(gfarm_url_root)
 	if err != nil {
 		logger.LogIf(ctx, err)
@@ -505,6 +510,10 @@ func (n *gfarmObjects) ListBuckets(ctx context.Context) (buckets []minio.BucketI
 			Created: entry.ModTime(),
 		})
 	}
+	buckets = append(buckets, minio.BucketInfo{
+		Name: n.gfarmctl.gfarmSharedVirtualName,
+		Created: s.ModTime(),
+	})
 
 	// Sort bucket infos by bucket name.
 	sort.Sort(byBucketName(buckets))
@@ -534,6 +543,9 @@ func (n *gfarmObjects) listDirFactory() minio.ListDirFunc {
 			return true, nil
 		}
 		for _, fi := range fis {
+			if isMinioMetaBucket(fi.Name()) {
+				continue
+			}
 			if !fi.Access(gf.GFS_R_OK) {
 				continue
 			}
