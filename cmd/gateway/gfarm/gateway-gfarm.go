@@ -432,6 +432,11 @@ func (n *gfarmObjects) DeleteBucket(ctx context.Context, bucket string, forceDel
 	if !gfarmIsValidBucketName(bucket) {
 		return minio.BucketNameInvalid{Bucket: bucket}
 	}
+
+	if bucket == n.gfarmctl.gfarmSharedVirtualName {
+		return minio.BucketNameInvalid{Bucket: bucket}
+	}
+
 	gfarm_url_bucket := n.gfarm_url_PathJoin(gfarmSeparator, bucket)
 	err := gfarmToObjectErr(ctx, gf.Remove(gfarm_url_bucket), bucket)
 	if err != nil {
@@ -593,9 +598,22 @@ func (n *gfarmObjects) ListObjects(ctx context.Context, bucket, prefix, marker, 
 // deleteObject deletes a file path if its empty. If it's successfully deleted,
 // it will recursively move up the tree, deleting empty parent directories
 // until it finds one with files in it. Returns nil for a non-empty directory.
-func (n *gfarmObjects) deleteObject(basePath, deletePath string) error {
+func (n *gfarmObjects) deleteObject(basePath, deletePath string, isVirtualMappedObject bool) error {
 	if basePath == deletePath {
 		return nil
+	}
+	if isVirtualMappedObject {
+		sharedVirtialPath := minio.PathJoin(gfarmSeparator, n.gfarmctl.gfarmSharedVirtualName)
+		deletePathParent := strings.TrimSuffix(deletePath, gfarmSeparator)
+		deletePathParent = path.Dir(deletePathParent)
+		if deletePathParent == sharedVirtialPath {
+			return nil
+		}
+		deletePathGrandParent := strings.TrimSuffix(deletePathParent, gfarmSeparator)
+		deletePathGrandParent = path.Dir(deletePathGrandParent)
+		if deletePathGrandParent == sharedVirtialPath {
+			return nil
+		}
 	}
 
 	// Attempt to remove path.
@@ -617,7 +635,7 @@ func (n *gfarmObjects) deleteObject(basePath, deletePath string) error {
 	deletePath = path.Dir(deletePath)
 
 	// Delete parent directory. Errors for parent directories shouldn't trickle down.
-	n.deleteObject(basePath, deletePath)
+	n.deleteObject(basePath, deletePath, isVirtualMappedObject)
 
 	return nil
 }
@@ -644,7 +662,13 @@ func (n *gfarmObjects) ListObjectsV2(ctx context.Context, bucket, prefix, contin
 }
 
 func (n *gfarmObjects) DeleteObject(ctx context.Context, bucket, object string) error {
-	return gfarmToObjectErr(ctx, n.deleteObject(minio.PathJoin(gfarmSeparator, bucket), minio.PathJoin(gfarmSeparator, bucket, object)), bucket, object)
+
+	isVirtualMappedObject := false
+	if bucket == n.gfarmctl.gfarmSharedVirtualName {
+		isVirtualMappedObject = true
+	}
+
+	return gfarmToObjectErr(ctx, n.deleteObject(minio.PathJoin(gfarmSeparator, bucket), minio.PathJoin(gfarmSeparator, bucket, object), isVirtualMappedObject), bucket, object)
 }
 
 func (n *gfarmObjects) DeleteObjects(ctx context.Context, bucket string, objects []string) ([]error, error) {
@@ -773,7 +797,7 @@ func (n *gfarmObjects) PutObject(ctx context.Context, bucket string, object stri
 		//gfarm_url_name := n.gfarm_url_PathJoin(name)
 		if err = gf.MkdirAll(gfarm_url_name, os.FileMode(0755)); err != nil {
 			gf.LogError(GFARM_MSG_UNFIXED, "PutObject", "MkdirAll", gfarm_url_name, err)
-			n.deleteObject(minio.PathJoin(gfarmSeparator, bucket), name)
+			n.deleteObject(minio.PathJoin(gfarmSeparator, bucket), name, false)
 			return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 		}
 	} else {
@@ -784,7 +808,7 @@ func (n *gfarmObjects) PutObject(ctx context.Context, bucket string, object stri
 			gf.LogError(GFARM_MSG_UNFIXED, "PutObject", "OpenFile", gfarm_url_tmpname, err)
 			return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 		}
-		defer n.deleteObject(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket), tmpname)
+		defer n.deleteObject(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket), tmpname, false)
 		if _, err = myCopy(w, r); err != nil {
 			w.Close()
 			return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
@@ -795,7 +819,7 @@ func (n *gfarmObjects) PutObject(ctx context.Context, bucket string, object stri
 			if err = gf.MkdirAll(gfarm_url_dir, os.FileMode(0755)); err != nil {
 				gf.LogError(GFARM_MSG_UNFIXED, "PutObject", "MkdirAll", gfarm_url_dir, err)
 				w.Close()
-				n.deleteObject(minio.PathJoin(gfarmSeparator, bucket), dir)
+				n.deleteObject(minio.PathJoin(gfarmSeparator, bucket), dir, false)
 				return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 			}
 		}
