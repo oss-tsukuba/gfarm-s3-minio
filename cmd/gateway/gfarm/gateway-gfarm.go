@@ -770,6 +770,11 @@ func (n *gfarmObjects) GetObjectInfo(ctx context.Context, bucket, object string,
 		gf.LogError(GFARM_MSG_UNFIXED, "GetObjectInfo", "Stat", gfarm_url_bucket_object, err)
 		return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 	}
+	if fi.IsDir() {
+		//gf.LogError(GFARM_MSG_UNFIXED, "GetObjectInfo", "Stat", gfarm_url_bucket_object, err)
+		err := os.ErrNotExist
+		return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
+	}
 	return minio.ObjectInfo{
 		Bucket:  bucket,
 		Name:    object,
