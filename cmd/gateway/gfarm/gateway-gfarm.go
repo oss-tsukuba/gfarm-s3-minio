@@ -157,7 +157,19 @@ const (
 	gfarmPartfileDigestEnvVar = "GFARMS3_PARTFILE_DIGEST"
 
 	myCopyBufsize = 32 * 1024 * 1024
+
+	emptyETag = "d41d8cd98f00b204e9800998ecf8427e"
 )
+
+func extractETag(metadata map[string]string) string {
+	// md5Sum tag is kept for backward compatibility.
+	etag, ok := metadata["md5Sum"]
+	if !ok {
+		etag = metadata["etag"]
+	}
+	// Success.
+	return etag
+}
 
 func init() {
 	const gfarmGatewayTemplate = `NAME:
@@ -770,19 +782,34 @@ func (n *gfarmObjects) GetObjectInfo(ctx context.Context, bucket, object string,
 		gf.LogError(GFARM_MSG_UNFIXED, "GetObjectInfo", "Stat", gfarm_url_bucket_object, err)
 		return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 	}
-	if fi.IsDir() {
+	if fi.IsDir() && !strings.HasSuffix(object, gfarmSeparator) {
 		//gf.LogError(GFARM_MSG_UNFIXED, "GetObjectInfo", "Stat", gfarm_url_bucket_object, err)
 		err := os.ErrNotExist
 		return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 	}
-	return minio.ObjectInfo{
+
+	info := minio.ObjectInfo{
 		Bucket:  bucket,
 		Name:    object,
 		ModTime: fi.ModTime(),
 		Size:    fi.Size(),
 		IsDir:   fi.IsDir(),
 		AccTime: fi.ModTime(),
-	}, nil
+	}
+
+	if fi.IsDir() {
+		// No metadata is set, allocate a new one.
+		meta := make(map[string]string)
+		for k, v := range opts.UserDefined {
+			meta[k] = v
+		}
+		meta["etag"] = emptyETag // For directories etag is d41d8cd98f00b204e9800998ecf8427e
+		meta["content-type"] = "application/octet-stream"
+		info.ETag = extractETag(meta)
+		info.ContentType = meta["content-type"]
+		//info.ContentEncoding = meta["content-encoding"]
+	}
+	return info, nil
 }
 
 func (n *gfarmObjects) PutObject(ctx context.Context, bucket string, object string, r *minio.PutObjReader, opts minio.ObjectOptions) (objInfo minio.ObjectInfo, err error) {
@@ -847,6 +874,20 @@ func (n *gfarmObjects) PutObject(ctx context.Context, bucket string, object stri
 		Size:    fi.Size(),
 		IsDir:   fi.IsDir(),
 		AccTime: fi.ModTime(),
+	//	ContentType: ContentType,
+	}
+
+	if fi.IsDir() {
+		// No metadata is set, allocate a new one.
+		meta := make(map[string]string)
+		for k, v := range opts.UserDefined {
+			meta[k] = v
+		}
+		meta["etag"] = emptyETag // For directories etag is d41d8cd98f00b204e9800998ecf8427e
+		meta["content-type"] = "application/octet-stream"
+		info.ETag = extractETag(meta)
+		info.ContentType = meta["content-type"]
+		//info.ContentEncoding = meta["content-encoding"]
 	}
 
 	return info, nil
