@@ -812,6 +812,50 @@ func (n *gfarmObjects) GetObjectInfo(ctx context.Context, bucket, object string,
 	return info, nil
 }
 
+func (n *gfarmObjects) makeTempFile(ctx context.Context, bucket, object, tmpname, uuid string, flags int, perm os.FileMode) (*gf.File, error) {
+	gfarm_url_tmpname := n.gfarm_url_PathJoin(tmpname)
+
+	name := minio.PathJoin(gfarmSeparator, bucket, object)
+
+	dir := path.Dir(name)
+	if dir != "" {
+		gfarm_url_dir := n.gfarm_url_PathJoin(dir)
+		if err := gf.MkdirAll(gfarm_url_dir, os.FileMode(0755)); err != nil {
+			gf.LogError(GFARM_MSG_UNFIXED, "PutObject", "MkdirAll", gfarm_url_dir, err)
+			return nil, err
+		}
+	}
+
+	w, name, err := n.createTemFileWithDefaultACL(bucket, object, uuid, flags | os.O_EXCL, perm)
+	if err != nil {
+		return nil, err
+	}
+
+	gfarm_url_name := n.gfarm_url_PathJoin(name)
+
+	if err = gf.Rename(gfarm_url_name, gfarm_url_tmpname); err != nil {
+		gf.LogError(GFARM_MSG_UNFIXED, "makeTempFile", "Rename", gfarm_url_tmpname, err)
+		w.Close()
+		return nil, err
+	}
+
+	return w, nil
+}
+
+func (n *gfarmObjects) createTemFileWithDefaultACL(bucket, object, uuid string, flags int, perm os.FileMode) (*gf.File, string, error) {
+	var err error
+	for i := 0; i < 1024; i++ {
+		name := minio.PathJoin(gfarmSeparator, bucket, fmt.Sprintf("%s.%s.%d", object, uuid, i))
+		gfarm_url_name := n.gfarm_url_PathJoin(name)
+		w, err := gf.OpenFile(gfarm_url_name, flags, perm)
+		if err == nil {
+			gf.LogError(GFARM_MSG_UNFIXED, "createTemFileWithDefaultACL", "OpenFile", gfarm_url_name, err)
+			return w, name, nil
+		}
+	}
+	return nil, "", err
+}
+
 func (n *gfarmObjects) PutObject(ctx context.Context, bucket string, object string, r *minio.PutObjReader, opts minio.ObjectOptions) (objInfo minio.ObjectInfo, err error) {
 
 	gfarm_url_bucket := n.gfarm_url_PathJoin(gfarmSeparator, bucket)
@@ -822,11 +866,10 @@ func (n *gfarmObjects) PutObject(ctx context.Context, bucket string, object stri
 	}
 
 	name := minio.PathJoin(gfarmSeparator, bucket, object)
+	gfarm_url_name := n.gfarm_url_PathJoin(name)
 
 	// If its a directory create a prefix ??<
-	gfarm_url_name := n.gfarm_url_PathJoin(name)
 	if strings.HasSuffix(object, gfarmSeparator) && r.Size() == 0 {
-		//gfarm_url_name := n.gfarm_url_PathJoin(name)
 		if err = gf.MkdirAll(gfarm_url_name, os.FileMode(0755)); err != nil {
 			gf.LogError(GFARM_MSG_UNFIXED, "PutObject", "MkdirAll", gfarm_url_name, err)
 			n.deleteObject(minio.PathJoin(gfarmSeparator, bucket), name, false)
@@ -835,9 +878,8 @@ func (n *gfarmObjects) PutObject(ctx context.Context, bucket string, object stri
 	} else {
 		tmpname := minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, minio.MustGetUUID())
 		gfarm_url_tmpname := n.gfarm_url_PathJoin(tmpname)
-		w, err := gf.OpenFile(gfarm_url_tmpname, os.O_WRONLY | os.O_CREATE | os.O_TRUNC, os.FileMode(0644))
+		w, err := n.makeTempFile(ctx, bucket, object, tmpname, minio.MustGetUUID(), os.O_WRONLY | os.O_CREATE | os.O_TRUNC, os.FileMode(0644))
 		if err != nil {
-			gf.LogError(GFARM_MSG_UNFIXED, "PutObject", "OpenFile", gfarm_url_tmpname, err)
 			return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 		}
 		defer n.deleteObject(minio.PathJoin(gfarmSeparator, minioMetaTmpBucket), tmpname, false)
@@ -845,17 +887,10 @@ func (n *gfarmObjects) PutObject(ctx context.Context, bucket string, object stri
 			w.Close()
 			return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 		}
-		dir := path.Dir(name)
-		if dir != "" {
-			gfarm_url_dir := n.gfarm_url_PathJoin(dir)
-			if err = gf.MkdirAll(gfarm_url_dir, os.FileMode(0755)); err != nil {
-				gf.LogError(GFARM_MSG_UNFIXED, "PutObject", "MkdirAll", gfarm_url_dir, err)
-				w.Close()
-				n.deleteObject(minio.PathJoin(gfarmSeparator, bucket), dir, false)
-				return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
-			}
+		err = w.Close()
+		if err != nil {
+			return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 		}
-		w.Close()
 		if err = gf.Rename(gfarm_url_tmpname, gfarm_url_name); err != nil {
 			gf.LogError(GFARM_MSG_UNFIXED, "PutObject", "Rename", gfarm_url_name, err)
 			return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
@@ -993,20 +1028,13 @@ func (n *gfarmObjects) CompleteMultipartUpload(ctx context.Context, bucket, obje
 	}
 
 	name := minio.PathJoin(gfarmSeparator, bucket, object)
-	dir := path.Dir(name)
-	if dir != "" {
-		gfarm_url_dir := n.gfarm_url_PathJoin(dir)
-		if err = gf.MkdirAll(gfarm_url_dir, os.FileMode(0755)); err != nil {
-			gf.LogError(GFARM_MSG_UNFIXED, "CompleteMultipartUpload", "MkdirAll", gfarm_url_dir, err)
-			return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
-		}
-	}
+	gfarm_url_name := n.gfarm_url_PathJoin(name)
 
 	tmpname := minio.PathJoin(gfarmSeparator, minioMetaTmpBucket, uploadID, "00000")
 	gfarm_url_tmpname := n.gfarm_url_PathJoin(tmpname)
-	w, err := gf.OpenFile(gfarm_url_tmpname, os.O_WRONLY | os.O_CREATE | os.O_TRUNC, os.FileMode(0644))
+
+	w, err := n.makeTempFile(ctx, bucket, object, tmpname, minio.MustGetUUID(), os.O_WRONLY | os.O_CREATE | os.O_TRUNC, os.FileMode(0644))
 	if err != nil {
-		gf.LogError(GFARM_MSG_UNFIXED, "CompleteMultipartUpload", "OpenFile", gfarm_url_tmpname, err)
 		return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 	}
 
@@ -1017,12 +1045,10 @@ func (n *gfarmObjects) CompleteMultipartUpload(ctx context.Context, bucket, obje
 			return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 		}
 	}
-
 	err = w.Close()
 	if err != nil {
 		return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 	}
-	gfarm_url_name := n.gfarm_url_PathJoin(name)
 	err = gf.Rename(gfarm_url_tmpname, gfarm_url_name)
 	if err != nil {
 		gf.LogError(GFARM_MSG_UNFIXED, "CompleteMultipartUpload", "Rename", gfarm_url_name, err)
