@@ -595,17 +595,25 @@ func (n *gfarmObjects) ListObjects(ctx context.Context, bucket, prefix, marker, 
 			gf.LogError(GFARM_MSG_UNFIXED, "ListObjects", "Stat", gfarm_url_bucket_entry, err)
 			return minio.ObjectInfo{}, gfarmToObjectErr(ctx, err, bucket, entry)
 		}
-		return minio.ObjectInfo{
-			Bucket:  bucket,
-			Name:    entry,
-			ModTime: fi.ModTime(),
-			Size:    fi.Size(),
-			IsDir:   fi.IsDir(),
-			AccTime: fi.ModTime(),
-		}, nil
+		return toObjectInfoFile(bucket, entry, "", fi), nil
 	}
 
 	return minio.ListObjects(ctx, n, bucket, prefix, marker, delimiter, maxKeys, n.listPool, n.listDirFactory(), getObjectInfo, getObjectInfo)
+}
+
+func toObjectInfoFile(bucket, object, etag string, fi gf.FileInfo) minio.ObjectInfo {
+	info := minio.ObjectInfo{
+		Bucket:  bucket,
+		Name:    object,
+		ModTime: fi.ModTime(),
+		Size:    fi.Size(),
+		IsDir:   fi.IsDir(),
+		AccTime: fi.ModTime(),
+	}
+	if etag != "" {
+		info.ETag = etag
+	}
+	return info
 }
 
 // deleteObject deletes a file path if its empty. If it's successfully deleted,
@@ -788,15 +796,11 @@ func (n *gfarmObjects) GetObjectInfo(ctx context.Context, bucket, object string,
 		return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 	}
 
-	info := minio.ObjectInfo{
-		Bucket:  bucket,
-		Name:    object,
-		ModTime: fi.ModTime(),
-		Size:    fi.Size(),
-		IsDir:   fi.IsDir(),
-		AccTime: fi.ModTime(),
-	}
+	return toObjectInfoFileDir(bucket, object, "", fi, opts), nil
+}
 
+func toObjectInfoFileDir(bucket, object, etag string, fi gf.FileInfo, opts minio.ObjectOptions) minio.ObjectInfo {
+	info := toObjectInfoFile(bucket, object, etag, fi)
 	if fi.IsDir() {
 		// No metadata is set, allocate a new one.
 		meta := make(map[string]string)
@@ -809,7 +813,7 @@ func (n *gfarmObjects) GetObjectInfo(ctx context.Context, bucket, object string,
 		info.ContentType = meta["content-type"]
 		//info.ContentEncoding = meta["content-encoding"]
 	}
-	return info, nil
+	return info
 }
 
 func (n *gfarmObjects) makeTempFile(ctx context.Context, bucket, object, tmpname, uuid string, flags int, perm os.FileMode) (*gf.File, error) {
@@ -901,31 +905,8 @@ func (n *gfarmObjects) PutObject(ctx context.Context, bucket string, object stri
 		gf.LogError(GFARM_MSG_UNFIXED, "PutObject", "Stat", gfarm_url_name, err)
 		return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 	}
-	info := minio.ObjectInfo{
-		Bucket:  bucket,
-		Name:    object,
-		ETag:    r.MD5CurrentHexString(),
-		ModTime: fi.ModTime(),
-		Size:    fi.Size(),
-		IsDir:   fi.IsDir(),
-		AccTime: fi.ModTime(),
-	//	ContentType: ContentType,
-	}
-
-	if fi.IsDir() {
-		// No metadata is set, allocate a new one.
-		meta := make(map[string]string)
-		for k, v := range opts.UserDefined {
-			meta[k] = v
-		}
-		meta["etag"] = emptyETag // For directories etag is d41d8cd98f00b204e9800998ecf8427e
-		meta["content-type"] = "application/octet-stream"
-		info.ETag = extractETag(meta)
-		info.ContentType = meta["content-type"]
-		//info.ContentEncoding = meta["content-encoding"]
-	}
-
-	return info, nil
+	etag := r.MD5CurrentHexString()
+	return toObjectInfoFileDir(bucket, object, etag, fi, opts), nil
 }
 
 func (n *gfarmObjects) NewMultipartUpload(ctx context.Context, bucket string, object string, opts minio.ObjectOptions) (uploadID string, err error) {
@@ -1069,15 +1050,7 @@ func (n *gfarmObjects) CompleteMultipartUpload(ctx context.Context, bucket, obje
 	// Calculate s3 compatible md5sum for complete multipart.
 	s3MD5 := minio.ComputeCompleteMultipartMD5(parts)
 
-	return minio.ObjectInfo{
-		Bucket:  bucket,
-		Name:    object,
-		ETag:    s3MD5,
-		ModTime: fi.ModTime(),
-		Size:    fi.Size(),
-		IsDir:   fi.IsDir(),
-		AccTime: fi.ModTime(),
-	}, nil
+	return toObjectInfoFile(bucket, object, s3MD5, fi), nil
 }
 
 func (n *gfarmObjects) AbortMultipartUpload(ctx context.Context, bucket, object, uploadID string) (err error) {
