@@ -501,6 +501,7 @@ func (n *gfarmObjects) ListBuckets(ctx context.Context) (buckets []minio.BucketI
 	gfarm_url_root := n.gfarm_url_PathJoin(gfarmSeparator)
 	s, err := gf.Stat(n.gfarm_url_PathJoin())
 	if err != nil {
+		gf.LogError(GFARM_MSG_UNFIXED, "ListBuckets", "Stat", n.gfarm_url_PathJoin(), err)
 		return nil, gfarmToObjectErr(ctx, err)
 	}
 
@@ -783,7 +784,6 @@ func (n *gfarmObjects) GetObjectInfo(ctx context.Context, bucket, object string,
 		return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 	}
 	if fi.IsDir() && !strings.HasSuffix(object, gfarmSeparator) {
-		//gf.LogError(GFARM_MSG_UNFIXED, "GetObjectInfo", "Stat", gfarm_url_bucket_object, err)
 		err := os.ErrNotExist
 		return objInfo, gfarmToObjectErr(ctx, err, bucket, object)
 	}
