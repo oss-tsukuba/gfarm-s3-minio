@@ -31,7 +31,7 @@ import (
 
 func (n *gfarmObjects) createMetaTmpBucketGfarm(minioMetaTmpBucket string) error {
 	gfarm_url_minioMetaTmpBucket := n.gfarm_url_PathJoin(gfarmSeparator, minioMetaTmpBucket)
-	if err := gf.MkdirAll(gfarm_url_minioMetaTmpBucket, os.FileMode(0755)); err != nil {
+	if err := gf.MkdirAll(gfarm_url_minioMetaTmpBucket, os.FileMode(0700)); err != nil {
 		gf.LogError(GFARM_MSG_UNFIXED, "NewGatewayLayer", "MkdirAll", gfarm_url_minioMetaTmpBucket, err)
 		return err
 	}
@@ -43,7 +43,7 @@ func (n *gfarmObjects) createMetaTmpBucketCache(minioMetaTmpBucket string) error
 		return nil
 	}
 	gfarm_cache_minioMetaTmpBucket := n.gfarm_cache_PathJoin(gfarmSeparator, minioMetaTmpBucket)
-	if err := os.MkdirAll(gfarm_cache_minioMetaTmpBucket, os.FileMode(0755)); err != nil {
+	if err := os.MkdirAll(gfarm_cache_minioMetaTmpBucket, os.FileMode(0700)); err != nil {
 		return err
 	}
 	return nil
@@ -51,7 +51,7 @@ func (n *gfarmObjects) createMetaTmpBucketCache(minioMetaTmpBucket string) error
 
 func (n *gfarmObjects) createMultipartUploadDirGfarm(dirName string) error {
 	gfarm_url_dirName := n.gfarm_url_PathJoin(dirName)
-	if err := gf.Mkdir(gfarm_url_dirName, os.FileMode(0755)); err != nil {
+	if err := gf.Mkdir(gfarm_url_dirName, os.FileMode(0700)); err != nil {
 		gf.LogError(GFARM_MSG_UNFIXED, "NewMultipartUpload", "Mkdir", gfarm_url_dirName, err)
 		return err
 	}
@@ -63,7 +63,7 @@ func (n *gfarmObjects) createMultipartUploadDirCache(dirName string) error {
 		return nil
 	}
 	gfarm_cache_dirName := n.gfarm_cache_PathJoin(dirName)
-	if err := os.Mkdir(gfarm_cache_dirName, os.FileMode(0755)); err != nil {
+	if err := os.Mkdir(gfarm_cache_dirName, os.FileMode(0700)); err != nil {
 		return err
 	}
 	return nil
