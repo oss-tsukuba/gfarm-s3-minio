@@ -162,6 +162,25 @@ func (f *File) Write(b []byte) (int, error) {
 	return int(n), nil
 }
 
+func (f *File) Sendfile(w_off int64, d uintptr, r_off, len int64) (int64, error) {
+	var n C.gfarm_off_t
+	err := gfs_pio_sendfile(f.gf, w_off, int(d), r_off, len, &n)
+	if err != nil {
+		return 0, err
+	}
+	return int64(n), nil
+}
+
+func (f *File) Seek(offset int64, whence int) (int, error) {
+	var n C.gfarm_off_t
+	err := gfs_pio_seek(f.gf, offset, whence, &n)
+	if err != nil {
+		return 0, err
+	}
+//	uncache_path(f.path)
+	return int(n), nil
+}
+
 func Rename(from, to string) error {
 	err := gfs_rename(from, to)
 	if err != nil {
@@ -194,6 +213,10 @@ func Remove(path string) error {
 	uncache_parent(path)
 	return nil
 }
+
+//func RemoveAll(path string) error {
+//	return nil
+//}
 
 func Mkdir(path string, perm os.FileMode) error {
 	err := gfs_mkdir(path, perm)
@@ -383,6 +406,14 @@ func gfs_pio_read(gf C.GFS_File, b *byte, len int, n *C.int) error {
 
 func gfs_pio_write(gf C.GFS_File, b *byte, len int, n *C.int) error {
 	return gfCheckError(C.gfs_pio_write(gf, unsafe.Pointer(b), C.int(len), (*C.int)(unsafe.Pointer(n))))
+}
+
+func gfs_pio_seek(gf C.GFS_File, offset int64, whence int, n *C.gfarm_off_t) error {
+	return gfCheckError(C.gfs_pio_seek(gf, C.gfarm_off_t(offset), C.int(whence), (*C.gfarm_off_t)(unsafe.Pointer(n))))
+}
+
+func gfs_pio_sendfile(w_gf C.GFS_File, w_off int64, d int, r_off, len int64, n *C.gfarm_off_t) error {
+	return gfCheckError(C.gfs_pio_sendfile(w_gf, C.gfarm_off_t(w_off), C.int(d), C.gfarm_off_t(r_off), C.gfarm_off_t(len), (*C.gfarm_off_t)(unsafe.Pointer(n))))
 }
 
 func gfs_rename(from, to string) error {
